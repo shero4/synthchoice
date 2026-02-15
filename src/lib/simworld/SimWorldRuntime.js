@@ -2,6 +2,7 @@ import {
   CHARACTER_STATES,
   DEFAULT_SIM_OPTIONS,
   SHOP_POSITIONS,
+  SHOP_TYPES,
   SIM_STATUS,
   SPAWN_POINT,
   WORLD_CONFIG,
@@ -22,7 +23,7 @@ export class SimWorldRuntime {
     this.engine = new PixiWorldEngine(WORLD_CONFIG);
     this.destroyed = false;
 
-    /** @type {Map<string, {id: string, label: string, shopType?: string, x: number, y: number, slotIndex: number}>} */
+    /** @type {Map<string, {id: string, label: string, shopType?: string, visual?: object, x: number, y: number, slotIndex: number}>} */
     this.optionsMap = new Map();
 
     /** @type {Set<function>} */
@@ -85,7 +86,7 @@ export class SimWorldRuntime {
 
   /**
    * Add an option (shop building) to the world.
-   * @param {object} optionConfig - { id?, label, shopType? }
+   * @param {object} optionConfig - { id?, label, shopType?, visual? }
    */
   addOption(optionConfig) {
     const id = optionConfig.id || createId("opt");
@@ -107,11 +108,31 @@ export class SimWorldRuntime {
 
     const slot = SHOP_POSITIONS[slotIndex];
     this._nextSlot = slotIndex + 1;
+    const visual = optionConfig.visual?.spriteSheetDataUrl
+      ? {
+          spriteSheetDataUrl: optionConfig.visual.spriteSheetDataUrl,
+          gifDataUrl: optionConfig.visual.gifDataUrl || null,
+          grid: Array.isArray(optionConfig.visual.grid)
+            ? [
+                Number.parseInt(optionConfig.visual.grid[0], 10) || 2,
+                Number.parseInt(optionConfig.visual.grid[1], 10) || 2,
+              ]
+            : [2, 2],
+          frameSize: Number.parseInt(optionConfig.visual.frameSize, 10) || 128,
+          frameDurationMs:
+            Number.parseInt(optionConfig.visual.frameDurationMs, 10) || 150,
+        }
+      : null;
+    const assignedShopType =
+      optionConfig.shopType ||
+      SHOP_TYPES[slotIndex % SHOP_TYPES.length]?.id ||
+      null;
 
     const option = {
       id,
       label: optionConfig.label || id,
-      shopType: optionConfig.shopType || null,
+      shopType: assignedShopType,
+      visual,
       x: slot.x,
       y: slot.y,
       slotIndex,
@@ -124,6 +145,7 @@ export class SimWorldRuntime {
       id,
       label: option.label,
       shopType: option.shopType,
+      visual: option.visual,
       x: slot.x,
       y: slot.y,
     });
@@ -132,6 +154,7 @@ export class SimWorldRuntime {
       optionId: id,
       label: option.label,
       shopType: option.shopType,
+      hasVisual: Boolean(option.visual),
     });
     return option;
   }
@@ -203,7 +226,11 @@ export class SimWorldRuntime {
 
   async say(spriteId, message) {
     const text = message || "...";
-    this.engine.showSpeechBubble(spriteId, text, WORLD_CONFIG.bubbleDurationMs.reason);
+    this.engine.showSpeechBubble(
+      spriteId,
+      text,
+      WORLD_CONFIG.bubbleDurationMs.reason,
+    );
     this._emitAction(spriteId, "say", { message: text });
     await this.timing.wait(WORLD_CONFIG.bubbleDurationMs.reason);
   }
@@ -223,7 +250,10 @@ export class SimWorldRuntime {
     }
 
     // Set walking state
-    this.engine.setCharacterState(spriteId, CHARACTER_STATES.WALKING_TO_STATION);
+    this.engine.setCharacterState(
+      spriteId,
+      CHARACTER_STATES.WALKING_TO_STATION,
+    );
     this._emitAction(spriteId, "move", { optionId, optionLabel: option.label });
 
     // Get waypoint path from current position to shop
@@ -232,7 +262,12 @@ export class SimWorldRuntime {
     const waypoints = getPath(from, to);
 
     // Walk along each waypoint segment
-    await this._walkAlongPath(spriteId, from, waypoints, CHARACTER_STATES.WALKING_TO_STATION);
+    await this._walkAlongPath(
+      spriteId,
+      from,
+      waypoints,
+      CHARACTER_STATES.WALKING_TO_STATION,
+    );
 
     // Arrive — return to idle
     this.engine.setCharacterState(spriteId, CHARACTER_STATES.IDLE, "down");
@@ -253,7 +288,12 @@ export class SimWorldRuntime {
     const from = character.position;
     const waypoints = getPathToNearestExit(from);
 
-    await this._walkAlongPath(spriteId, from, waypoints, CHARACTER_STATES.WALKING_TO_CHOICE);
+    await this._walkAlongPath(
+      spriteId,
+      from,
+      waypoints,
+      CHARACTER_STATES.WALKING_TO_CHOICE,
+    );
 
     this.removeSprite(spriteId);
   }

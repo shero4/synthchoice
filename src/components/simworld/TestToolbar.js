@@ -1,14 +1,29 @@
 "use client";
 
-import { useState } from "react";
 import {
   ArrowRightOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
   LogoutOutlined,
   MessageOutlined,
-  PlusOutlined,
+  SearchOutlined,
+  UploadOutlined,
   UserAddOutlined,
 } from "@ant-design/icons";
-import { Button, Card, Divider, Input, Select, Space, Tooltip, message } from "antd";
+import {
+  Button,
+  Card,
+  Divider,
+  Input,
+  message,
+  Select,
+  Space,
+  Switch,
+  Tooltip,
+  Upload,
+} from "antd";
+import { useState } from "react";
+import { generateSprite, searchProduct } from "@/app/test/actions";
 
 const PERSONA_OPTIONS = [
   { value: "Analytical", label: "Analytical" },
@@ -19,20 +34,48 @@ const PERSONA_OPTIONS = [
   { value: "Cautious", label: "Cautious" },
 ];
 
-const SHOP_TYPE_OPTIONS = [
-  { value: "cafe", label: "☕ Cafe" },
-  { value: "library", label: "📚 Library" },
-  { value: "gym", label: "💪 Gym" },
-  { value: "gallery", label: "🎨 Art Gallery" },
-  { value: "office", label: "💼 Office" },
-  { value: "tech", label: "💻 Tech Shop" },
-  { value: "meditation", label: "🧘 Meditation" },
-  { value: "music", label: "🎵 Music Hall" },
+const PROVIDER_OPTIONS = [
+  { value: "openrouter", label: "OpenRouter (Gemini Flash)" },
+  { value: "gemini", label: "Google Gemini (Direct)" },
+  { value: "openai", label: "OpenAI (gpt-4.1-mini)" },
+];
+
+const GRID_OPTIONS = [
+  { value: 1, label: "1" },
+  { value: 2, label: "2" },
+  { value: 3, label: "3" },
+  { value: 4, label: "4" },
+  { value: 5, label: "5" },
+  { value: 6, label: "6" },
+  { value: 7, label: "7" },
+  { value: 8, label: "8" },
+];
+
+const FRAME_SIZE_OPTIONS = [
+  { value: 32, label: "32px" },
+  { value: 64, label: "64px" },
+  { value: 96, label: "96px" },
+  { value: 128, label: "128px" },
+  { value: 160, label: "160px" },
+  { value: 192, label: "192px" },
+  { value: 224, label: "224px" },
+  { value: 256, label: "256px" },
 ];
 
 export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
+  const [isVisible, setIsVisible] = useState(true);
+
+  const [mode, setMode] = useState("upload");
   const [optionLabel, setOptionLabel] = useState("");
-  const [shopType, setShopType] = useState("cafe");
+  const [logoFile, setLogoFile] = useState(null);
+  const [uploadedLogoName, setUploadedLogoName] = useState("");
+  const [productQuery, setProductQuery] = useState("");
+  const [provider, setProvider] = useState("gemini");
+  const [gridCols, setGridCols] = useState(2);
+  const [gridRows, setGridRows] = useState(2);
+  const [frameSize, setFrameSize] = useState(128);
+  const [generateGif, setGenerateGif] = useState(true);
+
   const [spriteName, setSpriteName] = useState("");
   const [spriteAge, setSpriteAge] = useState("");
   const [spriteBio, setSpriteBio] = useState("");
@@ -46,14 +89,121 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
     setLoading((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleAddOption = () => {
-    if (!runtime || !optionLabel.trim()) {
-      message.warning("Enter an option label");
+  const handleUploadChange = (info) => {
+    const file = info.file?.originFileObj || info.file;
+    if (!file) return;
+    setLogoFile(file);
+    setUploadedLogoName(file.name || "logo");
+  };
+
+  const handleGenerateAndAddOption = async () => {
+    if (!runtime) {
+      message.warning("Runtime is not ready yet");
       return;
     }
-    runtime.addOption({ label: optionLabel.trim(), shopType });
-    setOptionLabel("");
-    onUpdate?.();
+
+    const trimmedLabel = optionLabel.trim();
+    if (!trimmedLabel) {
+      message.warning("Enter a label");
+      return;
+    }
+
+    if (mode === "upload" && !logoFile) {
+      message.warning("Upload a logo image first");
+      return;
+    }
+
+    if (mode === "search" && !productQuery.trim()) {
+      message.warning("Enter a product query");
+      return;
+    }
+
+    setActionLoading("generateOption", true);
+    try {
+      const grid = `${gridCols}x${gridRows}`;
+      let result;
+
+      if (mode === "upload") {
+        const formData = new FormData();
+        formData.append("logo", logoFile);
+        formData.append("provider", provider);
+        formData.append("grid", grid);
+        formData.append("frameSize", frameSize.toString());
+        formData.append("generateGif", generateGif.toString());
+        result = await generateSprite(formData);
+      } else {
+        const searchResult = await searchProduct(productQuery.trim());
+        if (searchResult.error) {
+          throw new Error(searchResult.error);
+        }
+
+        const fetchUrls = [
+          ...(searchResult.imageUrl ? [searchResult.imageUrl] : []),
+          ...(searchResult.imageUrls ?? []).filter(
+            (url) => url && url !== searchResult.imageUrl,
+          ),
+        ];
+
+        const fetchRes = await fetch("/api/sprites/fetch-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrls: fetchUrls }),
+        });
+        const fetchResult = await fetchRes.json();
+        if (!fetchRes.ok || fetchResult.error) {
+          throw new Error(fetchResult.error || "Failed to fetch product image");
+        }
+
+        const genRes = await fetch("/api/sprites/generate-from-dataurl", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageDataUrl: fetchResult.imageDataUrl,
+            provider,
+            grid,
+            frameSize,
+            generateGif,
+          }),
+        });
+        result = await genRes.json();
+        if (!genRes.ok || result.error) {
+          throw new Error(result.error || "Failed to generate sprite");
+        }
+      }
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (!result.spriteSheet) {
+        throw new Error("Sprite sheet was not generated");
+      }
+
+      runtime.addOption({
+        label: trimmedLabel,
+        visual: {
+          spriteSheetDataUrl: result.spriteSheet,
+          gifDataUrl: result.gif || null,
+          grid: [gridCols, gridRows],
+          frameSize,
+          frameDurationMs: 150,
+        },
+      });
+
+      setOptionLabel("");
+      if (mode === "upload") {
+        setLogoFile(null);
+        setUploadedLogoName("");
+      } else {
+        setProductQuery("");
+      }
+
+      onUpdate?.();
+      message.success("Generated option added to SimWorld");
+    } catch (err) {
+      message.error(err.message || "Failed to add generated option");
+    } finally {
+      setActionLoading("generateOption", false);
+    }
   };
 
   const handleAddSprite = async () => {
@@ -148,9 +298,46 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
     label: o.label,
   }));
 
+  const canGenerateOption =
+    Boolean(runtime) &&
+    !loading.generateOption &&
+    Boolean(optionLabel.trim()) &&
+    (mode === "upload" ? Boolean(logoFile) : Boolean(productQuery.trim()));
+
+  if (!isVisible) {
+    return (
+      <Button
+        type="primary"
+        icon={<EyeOutlined />}
+        onClick={() => setIsVisible(true)}
+        style={{
+          position: "fixed",
+          bottom: 16,
+          right: 16,
+          zIndex: 1000,
+          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.2)",
+        }}
+      >
+        Show Testbar
+      </Button>
+    );
+  }
+
   return (
     <Card
       size="small"
+      title="SimWorld Testbar"
+      extra={
+        <Tooltip title="Hide testbar">
+          <Button
+            icon={<EyeInvisibleOutlined />}
+            size="small"
+            onClick={() => setIsVisible(false)}
+          >
+            Hide
+          </Button>
+        </Tooltip>
+      }
       style={{
         position: "fixed",
         bottom: 16,
@@ -158,7 +345,7 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
         transform: "translateX(-50%)",
         zIndex: 1000,
         width: "auto",
-        maxWidth: "95vw",
+        maxWidth: "96vw",
         boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
         borderRadius: 12,
         background: "rgba(255,255,255,0.97)",
@@ -168,46 +355,147 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
         body: { padding: "12px 16px" },
       }}
     >
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-        {/* Add Option */}
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          alignItems: "flex-end",
+          flexWrap: "wrap",
+        }}
+      >
         <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Add Option
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: "#64748b",
+              marginBottom: 4,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}
+          >
+            Option Generator
           </div>
-          <Space size={4}>
+          <Space size={6} wrap>
             <Select
-              value={shopType}
-              onChange={setShopType}
-              options={SHOP_TYPE_OPTIONS}
-              style={{ width: 140 }}
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: "upload", label: "Upload" },
+                { value: "search", label: "Search" },
+              ]}
+              style={{ width: 90 }}
               size="small"
             />
-            <Space.Compact>
-              <Input
-                placeholder="Label"
-                value={optionLabel}
-                onChange={(e) => setOptionLabel(e.target.value)}
-                onPressEnter={handleAddOption}
-                style={{ width: 120 }}
+
+            <Input
+              placeholder="Label"
+              value={optionLabel}
+              onChange={(e) => setOptionLabel(e.target.value)}
+              style={{ width: 120 }}
+              size="small"
+            />
+
+            {mode === "upload"
+              ? <>
+                  <Upload
+                    accept="image/*"
+                    maxCount={1}
+                    showUploadList={false}
+                    beforeUpload={() => false}
+                    onChange={handleUploadChange}
+                  >
+                    <Button icon={<UploadOutlined />} size="small">
+                      Upload Logo
+                    </Button>
+                  </Upload>
+                  <Input
+                    size="small"
+                    value={uploadedLogoName}
+                    placeholder="No file selected"
+                    readOnly
+                    style={{ width: 150 }}
+                  />
+                </>
+              : <Input
+                  placeholder="Product query"
+                  value={productQuery}
+                  onChange={(e) => setProductQuery(e.target.value)}
+                  onPressEnter={handleGenerateAndAddOption}
+                  style={{ width: 220 }}
+                  size="small"
+                  prefix={<SearchOutlined />}
+                />}
+
+            <Select
+              value={provider}
+              onChange={setProvider}
+              options={PROVIDER_OPTIONS}
+              style={{ width: 190 }}
+              size="small"
+            />
+
+            <Space.Compact size="small">
+              <Select
+                value={gridCols}
+                onChange={setGridCols}
+                options={GRID_OPTIONS}
+                style={{ width: 60 }}
                 size="small"
               />
-              <Tooltip title="Add shop to world">
-                <Button
-                  icon={<PlusOutlined />}
-                  onClick={handleAddOption}
-                  size="small"
-                  type="primary"
-                />
-              </Tooltip>
+              <Select
+                value={gridRows}
+                onChange={setGridRows}
+                options={GRID_OPTIONS}
+                style={{ width: 60 }}
+                size="small"
+              />
             </Space.Compact>
+
+            <Select
+              value={frameSize}
+              onChange={setFrameSize}
+              options={FRAME_SIZE_OPTIONS}
+              style={{ width: 90 }}
+              size="small"
+            />
+
+            <Space size={4}>
+              <Switch
+                checked={generateGif}
+                onChange={setGenerateGif}
+                size="small"
+              />
+              <span style={{ fontSize: 12, color: "#475569" }}>GIF</span>
+            </Space>
+
+            <Tooltip title="Generate sprite and add this option to the world">
+              <Button
+                type="primary"
+                size="small"
+                onClick={handleGenerateAndAddOption}
+                loading={loading.generateOption}
+                disabled={!canGenerateOption}
+              >
+                Generate + Add
+              </Button>
+            </Tooltip>
           </Space>
         </div>
 
-        <Divider type="vertical" style={{ height: 48 }} />
+        <Divider type="vertical" style={{ height: 56 }} />
 
-        {/* Add Sprite */}
         <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: "#64748b",
+              marginBottom: 4,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}
+          >
             Add Sprite
           </div>
           <Space size={4}>
@@ -255,11 +543,19 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
 
         {sprites.length > 0 && (
           <>
-            <Divider type="vertical" style={{ height: 48 }} />
+            <Divider type="vertical" style={{ height: 56 }} />
 
-            {/* Sprite Actions */}
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "#64748b",
+                  marginBottom: 4,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
                 Sprite Actions
               </div>
               <Space size={4}>

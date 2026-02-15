@@ -11,15 +11,24 @@ import { Container, Graphics, Text } from "pixi.js";
  * @param {Texture} [housesTexture] — unused
  * @returns {Container} PixiJS container with the building + sign
  */
-export function createBuilding(shopType, position, label, tilesetTexture, housesTexture) {
+export function createBuilding(
+  shopType,
+  position,
+  label,
+  tilesetTexture,
+  housesTexture,
+) {
   const container = new Container();
+  container.overlayAnchor = { x: 0, y: -84 };
 
   // --- Custom full house (prevents broken crop/slicing) ---
   const house = new Container();
 
   // roof shadow
   const roofShadow = new Graphics();
-  roofShadow.roundRect(-60, -100, 120, 22, 6).fill({ color: 0x5e1b14, alpha: 0.5 });
+  roofShadow
+    .roundRect(-60, -100, 120, 22, 6)
+    .fill({ color: 0x5e1b14, alpha: 0.5 });
   house.addChild(roofShadow);
 
   // roof

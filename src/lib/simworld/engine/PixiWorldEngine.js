@@ -1,14 +1,20 @@
 import {
   AnimatedSprite,
   Application,
+  Assets,
   Container,
   Graphics,
+  Rectangle,
   Text,
+  Texture,
 } from "pixi.js";
 
 import { loadAllAssets } from "./assetLoader";
 import { createBuilding } from "./buildingFactory";
-import { buildSpriteAnimations, createProceduralAnimations } from "./spriteFactory";
+import {
+  buildSpriteAnimations,
+  createProceduralAnimations,
+} from "./spriteFactory";
 import { TileMapRenderer } from "./tileMap";
 
 // ---------------------------------------------------------------------------
@@ -59,7 +65,9 @@ export class PixiWorldEngine {
 
   async init(containerElement) {
     if (!containerElement) {
-      throw new Error("A container element is required to initialize PixiWorldEngine.");
+      throw new Error(
+        "A container element is required to initialize PixiWorldEngine.",
+      );
     }
     this.containerElement = containerElement;
 
@@ -77,7 +85,8 @@ export class PixiWorldEngine {
       height: this.config.height,
       background: this.config.background,
       antialias: false,
-      resolution: typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
+      resolution:
+        typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
       autoDensity: true,
     });
 
@@ -119,7 +128,10 @@ export class PixiWorldEngine {
         this.assets = assets || {};
       })
       .catch((error) => {
-        console.warn("Asset loading failed; continuing with procedural fallback.", error);
+        console.warn(
+          "Asset loading failed; continuing with procedural fallback.",
+          error,
+        );
       });
 
     // Start tick loop
@@ -153,13 +165,17 @@ export class PixiWorldEngine {
     // Outer basin ring
     const basinOuter = new Graphics();
     basinOuter.circle(0, 0, 30).fill({ color: 0xaab4ba, alpha: 0.95 });
-    basinOuter.circle(0, 0, 30).stroke({ color: 0x6d7a82, width: 3, alpha: 0.9 });
+    basinOuter
+      .circle(0, 0, 30)
+      .stroke({ color: 0x6d7a82, width: 3, alpha: 0.9 });
     fountain.addChild(basinOuter);
 
     // Inner stone lip
     const basinLip = new Graphics();
     basinLip.circle(0, 0, 24).fill({ color: 0xc1c9ce, alpha: 0.95 });
-    basinLip.circle(0, 0, 24).stroke({ color: 0x8b979e, width: 2, alpha: 0.85 });
+    basinLip
+      .circle(0, 0, 24)
+      .stroke({ color: 0x8b979e, width: 2, alpha: 0.85 });
     fountain.addChild(basinLip);
 
     // Water bowl
@@ -170,8 +186,12 @@ export class PixiWorldEngine {
 
     // Ripple rings
     const ripple = new Graphics();
-    ripple.ellipse(-4, 2, 8, 3.5).stroke({ color: 0xe8fbff, width: 1.5, alpha: 0.7 });
-    ripple.ellipse(6, -3, 6, 2.7).stroke({ color: 0xe8fbff, width: 1.5, alpha: 0.6 });
+    ripple
+      .ellipse(-4, 2, 8, 3.5)
+      .stroke({ color: 0xe8fbff, width: 1.5, alpha: 0.7 });
+    ripple
+      .ellipse(6, -3, 6, 2.7)
+      .stroke({ color: 0xe8fbff, width: 1.5, alpha: 0.6 });
     fountain.addChild(ripple);
 
     // Center statue / spout
@@ -210,13 +230,94 @@ export class PixiWorldEngine {
         this.assets.tilesetHouses,
       );
       this.layers.buildings.addChild(building);
-      this.stations.set(station.id, { container: building, station });
+      const entry = { container: building, station, overlay: null };
+      this.stations.set(station.id, entry);
+      if (station.visual?.spriteSheetDataUrl) {
+        this._attachStationOverlay(station.id).catch((error) => {
+          console.warn(
+            `Failed to attach option overlay for ${station.id}:`,
+            error,
+          );
+        });
+      }
     } else {
       // Fallback: simple marker (same as v1 but styled)
       const marker = this._createFallbackMarker(station);
       this.layers.buildings.addChild(marker);
-      this.stations.set(station.id, { container: marker, station });
+      this.stations.set(station.id, {
+        container: marker,
+        station,
+        overlay: null,
+      });
     }
+  }
+
+  async _attachStationOverlay(stationId) {
+    const entry = this.stations.get(stationId);
+    if (!entry?.station?.visual?.spriteSheetDataUrl) return;
+
+    const visual = entry.station.visual;
+    const [rawCols, rawRows] = Array.isArray(visual.grid)
+      ? visual.grid
+      : [2, 2];
+    const cols = Math.max(1, Number.parseInt(rawCols, 10) || 2);
+    const rows = Math.max(1, Number.parseInt(rawRows, 10) || 2);
+
+    const texture = await Assets.load(visual.spriteSheetDataUrl);
+    if (!texture?.source) return;
+
+    // Station may have been removed/replaced while texture loaded.
+    const liveEntry = this.stations.get(stationId);
+    if (!liveEntry || liveEntry !== entry) return;
+
+    const frameW = Math.floor(texture.width / cols);
+    const frameH = Math.floor(texture.height / rows);
+    if (frameW < 1 || frameH < 1) return;
+
+    const frames = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        frames.push(
+          new Texture({
+            source: texture.source,
+            frame: new Rectangle(c * frameW, r * frameH, frameW, frameH),
+          }),
+        );
+      }
+    }
+
+    if (frames.length === 0) return;
+
+    this._clearStationOverlay(liveEntry);
+
+    const overlay = new AnimatedSprite(frames);
+    overlay.anchor.set(0.5, 1);
+    const frameDurationMs = Math.max(
+      50,
+      Number.parseInt(visual.frameDurationMs, 10) || 150,
+    );
+    // Pixi animationSpeed is normalized to 60 FPS.
+    overlay.animationSpeed = 1000 / (frameDurationMs * 60);
+    overlay.loop = true;
+    overlay.play();
+
+    const targetHeight = 52;
+    const scale = targetHeight / frameH;
+    overlay.scale.set(scale);
+
+    const anchor = liveEntry.container.overlayAnchor || { x: 0, y: -84 };
+    overlay.x = anchor.x;
+    overlay.y = anchor.y;
+
+    liveEntry.container.addChild(overlay);
+    liveEntry.overlay = overlay;
+  }
+
+  _clearStationOverlay(entry) {
+    if (!entry?.overlay) return;
+    entry.overlay.stop();
+    entry.overlay.destroy();
+    entry.overlay = null;
   }
 
   _createFallbackMarker(station) {
@@ -254,6 +355,7 @@ export class PixiWorldEngine {
   removeStation(stationId) {
     const entry = this.stations.get(stationId);
     if (!entry) return;
+    this._clearStationOverlay(entry);
     entry.container.destroy({ children: true });
     this.stations.delete(stationId);
   }
@@ -279,17 +381,26 @@ export class PixiWorldEngine {
 
     if (!initialTextures || initialTextures.length === 0) {
       // Try procedural fallback (clothed)
-      const fallback = createProceduralAnimations(this.app, true, character.color || 0x4488cc);
+      const fallback = createProceduralAnimations(
+        this.app,
+        true,
+        character.color || 0x4488cc,
+      );
       if (fallback.idleDown.length > 0) {
         Object.assign(animations, fallback);
       } else {
-        console.warn("No sprite textures available for character", character.id);
+        console.warn(
+          "No sprite textures available for character",
+          character.id,
+        );
         return;
       }
     }
 
     const sprite = new AnimatedSprite(
-      animations.idleDown.length > 0 ? animations.idleDown : animations.walkDown,
+      animations.idleDown.length > 0
+        ? animations.idleDown
+        : animations.walkDown,
     );
     sprite.anchor.set(0.5, 1);
     sprite.animationSpeed = 0.12;
@@ -357,11 +468,13 @@ export class PixiWorldEngine {
     let textures;
     if (isWalking) {
       if (dir === "up") textures = entry.animations.walkUp;
-      else if (dir === "left" || dir === "right") textures = entry.animations.walkSide;
+      else if (dir === "left" || dir === "right")
+        textures = entry.animations.walkSide;
       else textures = entry.animations.walkDown;
     } else {
       if (dir === "up") textures = entry.animations.idleUp;
-      else if (dir === "left" || dir === "right") textures = entry.animations.idleSide;
+      else if (dir === "left" || dir === "right")
+        textures = entry.animations.idleSide;
       else textures = entry.animations.idleDown;
     }
 
@@ -500,9 +613,15 @@ export class PixiWorldEngine {
       const fadeOutStart = bubble.endAt - bubble.fadeMs;
 
       if (now <= fadeInEnd) {
-        bubble.container.alpha = Math.min(1, (now - bubble.startAt) / bubble.fadeMs);
+        bubble.container.alpha = Math.min(
+          1,
+          (now - bubble.startAt) / bubble.fadeMs,
+        );
       } else if (now >= fadeOutStart) {
-        bubble.container.alpha = Math.max(0, (bubble.endAt - now) / bubble.fadeMs);
+        bubble.container.alpha = Math.max(
+          0,
+          (bubble.endAt - now) / bubble.fadeMs,
+        );
       } else {
         bubble.container.alpha = 1;
       }
