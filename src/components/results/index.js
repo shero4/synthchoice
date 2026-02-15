@@ -1,4 +1,9 @@
 export { SharesPanel } from "./SharesPanel";
+export { SharesChartPanel } from "./SharesChartPanel";
 export { SegmentBreakdown } from "./SegmentBreakdown";
 export { FeatureImportancePanel } from "./FeatureImportancePanel";
 export { ValidationPanel } from "./ValidationPanel";
+export { PartWorthPanel } from "./PartWorthPanel";
+export { ChoiceDriversPanel } from "./ChoiceDriversPanel";
+export { WTPPanel } from "./WTPPanel";
+export { ConfidencePanel } from "./ConfidencePanel";
