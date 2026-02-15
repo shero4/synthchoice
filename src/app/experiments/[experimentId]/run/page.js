@@ -18,21 +18,21 @@ import {
   Statistic,
   Typography,
 } from "antd";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import SimWorldCanvas from "@/components/simworld/SimWorldCanvas";
 import SimWorldSidebar from "@/components/simworld/SimWorldSidebar";
+import { computeResults } from "@/lib/domain/aggregate";
 import { ExperimentRunner, RunnerStatus } from "@/lib/experiment";
 import {
-  getExperiment,
-  getAlternatives,
-  createRun,
   addResponse,
+  createRun,
+  getAlternatives,
+  getExperiment,
   saveResultsSummary,
   updateRun,
 } from "@/lib/firebase/db";
-import { computeResults } from "@/lib/domain/aggregate";
 
 const { Text, Title } = Typography;
 
@@ -78,7 +78,13 @@ export default function RunnerPage() {
     total: 0,
     completed: 0,
     active: 0,
+    deciding: 0,
     pending: 0,
+    optionsTotal: 0,
+    optionsReady: 0,
+    optionsFailed: 0,
+    initialSpawnTarget: 0,
+    initialSpawned: 0,
   });
 
   // Sidebar data
@@ -130,28 +136,26 @@ export default function RunnerPage() {
   // -----------------------------------------------------------------------
   // Step 2: SimWorld canvas ready → init ExperimentRunner
   // -----------------------------------------------------------------------
-  const handleWorldReady = useCallback(
-    (runtime) => {
-      runtimeRef.current = runtime;
+  const handleWorldReady = useCallback((runtime) => {
+    runtimeRef.current = runtime;
 
-      // Subscribe to runtime events for sidebar
-      runtime.onAction((event) => {
-        setActionLog((prev) => [...prev, event]);
+    // Subscribe to runtime events for sidebar
+    runtime.onAction((event) => {
+      setActionLog((prev) => [...prev, event]);
 
-        // Refresh sprites list on meaningful changes
-        if (
-          event.type === "sprite.removed" ||
-          event.type === "pick" ||
-          event.type === "exit"
-        ) {
-          setSprites(runtime.getSprites());
-        }
-      });
+      // Refresh sprites list on meaningful changes
+      if (
+        event.type === "sprite.added" ||
+        event.type === "sprite.removed" ||
+        event.type === "pick" ||
+        event.type === "exit"
+      ) {
+        setSprites(runtime.getSprites());
+      }
+    });
 
-      setWorldReady(true);
-    },
-    [],
-  );
+    setWorldReady(true);
+  }, []);
 
   // When both data + world are ready → init the runner
   useEffect(() => {
@@ -160,14 +164,18 @@ export default function RunnerPage() {
 
     // Validate we have data to work with
     if (!alternatives.length) {
-      setErrorMsg("This experiment has no alternatives. Add alternatives before running.");
+      setErrorMsg(
+        "This experiment has no alternatives. Add alternatives before running.",
+      );
       setPageState(PageState.ERROR);
       return;
     }
 
     const segments = experiment?.agentPlan?.segments || [];
     if (!segments.length) {
-      setErrorMsg("This experiment has no agent segments configured. Edit the experiment first.");
+      setErrorMsg(
+        "This experiment has no agent segments configured. Edit the experiment first.",
+      );
       setPageState(PageState.ERROR);
       return;
     }
@@ -177,6 +185,8 @@ export default function RunnerPage() {
       experiment,
       alternatives,
       concurrency: 10,
+      decisionConcurrency: 6,
+      optionSpriteConcurrency: 6,
       onProgress: (p) => {
         setProgress(p);
       },
@@ -186,7 +196,7 @@ export default function RunnerPage() {
           ...prev,
           {
             id: `agent-${Date.now()}-${Math.random()}`,
-            spriteId: evt.agentId,
+            spriteId: evt.spriteId || evt.agentId,
             type: evt.type,
             detail: evt,
             timestamp: Date.now(),
@@ -305,6 +315,11 @@ export default function RunnerPage() {
     progress.total > 0
       ? Math.round((progress.completed / progress.total) * 100)
       : 0;
+  const initOptionsCompleted = progress.optionsReady + progress.optionsFailed;
+  const initOptionsPercent =
+    progress.optionsTotal > 0
+      ? Math.round((initOptionsCompleted / progress.optionsTotal) * 100)
+      : 0;
 
   const getElapsedStr = () => {
     if (!startTime) return "0s";
@@ -340,9 +355,30 @@ export default function RunnerPage() {
       case PageState.INIT_WORLD:
         return (
           <Card size="small">
-            <Space>
-              <Spin size="small" />
-              <Text>Initializing SimWorld...</Text>
+            <Space direction="vertical" style={{ width: "100%" }} size={8}>
+              <Space>
+                <Spin size="small" />
+                <Text>
+                  {!worldReady
+                    ? "Initializing SimWorld..."
+                    : "Preparing houses, sprites, and agents..."}
+                </Text>
+              </Space>
+              {worldReady && progress.status === RunnerStatus.INITIALIZING && (
+                <>
+                  <Text type="secondary">
+                    Option sprites: {initOptionsCompleted}/
+                    {progress.optionsTotal} &middot; Initial agents:{" "}
+                    {progress.initialSpawned}/{progress.initialSpawnTarget}
+                  </Text>
+                  <Progress
+                    percent={initOptionsPercent}
+                    status="active"
+                    size="small"
+                    strokeColor={{ "0%": "#1677ff", "100%": "#52c41a" }}
+                  />
+                </>
+              )}
             </Space>
           </Card>
         );
@@ -359,8 +395,8 @@ export default function RunnerPage() {
                   {experiment?.name || "Experiment"}
                 </Title>
                 <Text type="secondary">
-                  {progress.total} agents &middot;{" "}
-                  {alternatives.length} alternatives
+                  {progress.total} agents &middot; {alternatives.length}{" "}
+                  alternatives
                 </Text>
               </Space>
               <Button
@@ -397,19 +433,41 @@ export default function RunnerPage() {
                     title="Active"
                     value={progress.active}
                     valueStyle={{ fontSize: 14 }}
-                    style={{ display: "inline-flex", gap: 6, alignItems: "baseline" }}
+                    style={{
+                      display: "inline-flex",
+                      gap: 6,
+                      alignItems: "baseline",
+                    }}
                   />
                   <Statistic
                     title="Pending"
                     value={progress.pending}
                     valueStyle={{ fontSize: 14 }}
-                    style={{ display: "inline-flex", gap: 6, alignItems: "baseline" }}
+                    style={{
+                      display: "inline-flex",
+                      gap: 6,
+                      alignItems: "baseline",
+                    }}
+                  />
+                  <Statistic
+                    title="Deciding"
+                    value={progress.deciding}
+                    valueStyle={{ fontSize: 14 }}
+                    style={{
+                      display: "inline-flex",
+                      gap: 6,
+                      alignItems: "baseline",
+                    }}
                   />
                   <Statistic
                     title="Elapsed"
                     value={getElapsedStr()}
                     valueStyle={{ fontSize: 14 }}
-                    style={{ display: "inline-flex", gap: 6, alignItems: "baseline" }}
+                    style={{
+                      display: "inline-flex",
+                      gap: 6,
+                      alignItems: "baseline",
+                    }}
                   />
                 </Space>
               </Space>
@@ -425,7 +483,8 @@ export default function RunnerPage() {
 
       case PageState.COMPLETE: {
         const totalResponses = results?.responses?.length || 0;
-        const errorCount = results?.responses?.filter((r) => r.error)?.length || 0;
+        const errorCount =
+          results?.responses?.filter((r) => r.error)?.length || 0;
         const successCount = totalResponses - errorCount;
 
         return (
@@ -487,7 +546,8 @@ export default function RunnerPage() {
   };
 
   // Should we show the world canvas?
-  const showCanvas = pageState !== PageState.LOADING && pageState !== PageState.ERROR;
+  const showCanvas =
+    pageState !== PageState.LOADING && pageState !== PageState.ERROR;
 
   return (
     <div
@@ -527,10 +587,7 @@ export default function RunnerPage() {
           }}
         >
           {showCanvas && (
-            <SimWorldCanvas
-              onReady={handleWorldReady}
-              onProgress={() => {}}
-            />
+            <SimWorldCanvas onReady={handleWorldReady} onProgress={() => {}} />
           )}
 
           {/* Loading overlay when data is loading or world initializing */}

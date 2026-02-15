@@ -9,13 +9,21 @@
  */
 
 import {
-  getAgentDecision,
   generateAlternativeSprite,
+  getAgentDecision,
 } from "@/app/experiments/[experimentId]/run/actions";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const DEFAULT_ACTIVE_CONCURRENCY = 10;
+const DEFAULT_DECISION_CONCURRENCY = 6;
+const DEFAULT_OPTION_SPRITE_CONCURRENCY = 6;
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
 
 /** Fisher-Yates shuffle (returns new array). */
 function shuffle(arr) {
@@ -65,6 +73,57 @@ function expandSegmentsToAgents(segments) {
   return agents;
 }
 
+function createLimiter(limit) {
+  const normalizedLimit = Math.max(1, Number.parseInt(limit, 10) || 1);
+  const queue = [];
+  let activeCount = 0;
+
+  const pump = () => {
+    while (activeCount < normalizedLimit && queue.length > 0) {
+      const job = queue.shift();
+      activeCount++;
+
+      Promise.resolve()
+        .then(job.task)
+        .then(job.resolve, job.reject)
+        .finally(() => {
+          activeCount--;
+          pump();
+        });
+    }
+  };
+
+  return {
+    run(task) {
+      return new Promise((resolve, reject) => {
+        queue.push({ task, resolve, reject });
+        pump();
+      });
+    },
+    getActiveCount() {
+      return activeCount;
+    },
+  };
+}
+
+async function runWithConcurrency(items, limit, worker, onSettled) {
+  const limiter = createLimiter(limit);
+  const jobs = items.map((item, index) =>
+    limiter
+      .run(() => worker(item, index))
+      .then((value) => {
+        onSettled?.({ status: "fulfilled", value, item, index });
+        return value;
+      })
+      .catch((reason) => {
+        onSettled?.({ status: "rejected", reason, item, index });
+        throw reason;
+      }),
+  );
+
+  return Promise.allSettled(jobs);
+}
+
 // ---------------------------------------------------------------------------
 // Status enum
 // ---------------------------------------------------------------------------
@@ -100,7 +159,10 @@ export class ExperimentRunner {
     onProgress,
     onAgentUpdate,
     onComplete,
-    concurrency = 10,
+    concurrency = DEFAULT_ACTIVE_CONCURRENCY,
+    decisionConcurrency = DEFAULT_DECISION_CONCURRENCY,
+    optionSpriteConcurrency = DEFAULT_OPTION_SPRITE_CONCURRENCY,
+    initialSpawnWindow = concurrency,
   }) {
     this.runtime = runtime;
     this.experiment = experiment;
@@ -108,7 +170,27 @@ export class ExperimentRunner {
     this.onProgress = onProgress || (() => {});
     this.onAgentUpdate = onAgentUpdate || (() => {});
     this.onComplete = onComplete || (() => {});
-    this.concurrency = concurrency;
+    this.concurrency = Math.max(
+      1,
+      Number.parseInt(concurrency, 10) || DEFAULT_ACTIVE_CONCURRENCY,
+    );
+    this.initialSpawnWindow = Math.max(
+      1,
+      Math.min(
+        this.concurrency,
+        Number.parseInt(initialSpawnWindow, 10) || this.concurrency,
+      ),
+    );
+    this.decisionConcurrency = Math.max(
+      1,
+      Number.parseInt(decisionConcurrency, 10) || DEFAULT_DECISION_CONCURRENCY,
+    );
+    this.optionSpriteConcurrency = Math.max(
+      1,
+      Number.parseInt(optionSpriteConcurrency, 10) ||
+        DEFAULT_OPTION_SPRITE_CONCURRENCY,
+    );
+    this.decisionLimiter = createLimiter(this.decisionConcurrency);
 
     this.status = RunnerStatus.IDLE;
 
@@ -131,6 +213,13 @@ export class ExperimentRunner {
     this._completedCount = 0;
     this._totalCount = 0;
     this._activeCount = 0;
+    this._decidingCount = 0;
+    this._spawnCounter = 0;
+    this._optionsTotal = 0;
+    this._optionsReady = 0;
+    this._optionsFailed = 0;
+    this._initialSpawnTarget = 0;
+    this._initialSpawned = 0;
 
     /** Abort flag */
     this._aborted = false;
@@ -142,6 +231,19 @@ export class ExperimentRunner {
 
   async init() {
     this.status = RunnerStatus.INITIALIZING;
+    this.responses = [];
+    this.altToOptionId = new Map();
+    this.spriteLookup = new Map();
+    this._completedCount = 0;
+    this._activeCount = 0;
+    this._decidingCount = 0;
+    this._spawnCounter = 0;
+    this._optionsTotal = this.alternatives.length;
+    this._optionsReady = 0;
+    this._optionsFailed = 0;
+    this._initialSpawnTarget = 0;
+    this._initialSpawned = 0;
+    this._emitProgress();
 
     // 1. Add each alternative as a building/option in SimWorld
     for (const alt of this.alternatives) {
@@ -153,36 +255,7 @@ export class ExperimentRunner {
       this.altToOptionId.set(alt.id, option.id);
     }
 
-    // 2. Generate product sprites for all alternatives in parallel
-    //    (fire-and-forget: buildings appear immediately, sprites pop in when ready)
-    const spritePromises = this.alternatives.map(async (alt) => {
-      try {
-        const result = await generateAlternativeSprite(alt.name || alt.id);
-        if (result?.success && result.spriteSheetDataUrl) {
-          const optionId = this.altToOptionId.get(alt.id);
-          if (optionId) {
-            this.runtime.updateOptionVisual(optionId, {
-              spriteSheetDataUrl: result.spriteSheetDataUrl,
-              grid: result.grid,
-              frameSize: result.frameSize,
-              frameDurationMs: result.frameDurationMs,
-            });
-          }
-        } else {
-          console.warn(
-            `[ExperimentRunner] Sprite gen skipped for "${alt.name}":`,
-            result?.error,
-          );
-        }
-      } catch (err) {
-        console.warn(
-          `[ExperimentRunner] Sprite gen failed for "${alt.name}":`,
-          err.message,
-        );
-      }
-    });
-
-    // 3. Expand segments into individual agents
+    // 2. Expand segments into individual agents
     const segments = this.experiment?.agentPlan?.segments || [];
     const expandedAgents = expandSegmentsToAgents(segments);
 
@@ -190,19 +263,61 @@ export class ExperimentRunner {
     this.allAgents = shuffle(expandedAgents);
     this.agentQueue = [...this.allAgents];
     this._totalCount = this.agentQueue.length;
-    this._completedCount = 0;
+    this._emitProgress();
 
-    // 4. Pre-spawn only the first batch (concurrency window) around the fountain
-    const initialBatch = Math.min(this.concurrency, this.allAgents.length);
+    // 3. Pre-spawn first batch around the center fountain.
+    this._initialSpawnTarget = Math.min(
+      this.initialSpawnWindow,
+      this.allAgents.length,
+    );
     const cx = 656; // SPAWN_POINT.x (center of 1280 world)
     const cy = 400; // SPAWN_POINT.y (center of 800 world)
 
-    for (let i = 0; i < initialBatch; i++) {
-      await this._spawnAgent(this.allAgents[i], i, cx, cy);
+    for (let i = 0; i < this._initialSpawnTarget; i++) {
+      await this._spawnAgent(this.allAgents[i], i, cx, cy, true);
     }
 
-    // Wait for sprite generation to finish (they pop in on buildings)
-    await Promise.allSettled(spritePromises);
+    // 4. Generate product sprites with bounded parallelism.
+    await runWithConcurrency(
+      this.alternatives,
+      this.optionSpriteConcurrency,
+      async (alt) => {
+        try {
+          const result = await generateAlternativeSprite(alt.name || alt.id);
+          if (result?.success && result.spriteSheetDataUrl) {
+            const optionId = this.altToOptionId.get(alt.id);
+            if (optionId) {
+              this.runtime.updateOptionVisual(optionId, {
+                spriteSheetDataUrl: result.spriteSheetDataUrl,
+                grid: result.grid,
+                frameSize: result.frameSize,
+                frameDurationMs: result.frameDurationMs,
+              });
+            }
+            return { ok: true };
+          }
+          console.warn(
+            `[ExperimentRunner] Sprite gen skipped for "${alt.name}":`,
+            result?.error,
+          );
+          return { ok: false, error: result?.error || "No sprite returned" };
+        } catch (err) {
+          console.warn(
+            `[ExperimentRunner] Sprite gen failed for "${alt.name}":`,
+            err.message,
+          );
+          return { ok: false, error: err.message };
+        }
+      },
+      ({ value }) => {
+        if (value?.ok) {
+          this._optionsReady++;
+        } else {
+          this._optionsFailed++;
+        }
+        this._emitProgress();
+      },
+    );
 
     this.status = RunnerStatus.READY;
     this._emitProgress();
@@ -214,8 +329,15 @@ export class ExperimentRunner {
    * @param {number} index — used for ring/slot positioning
    * @param {number} cx — center x
    * @param {number} cy — center y
+   * @param {boolean} trackInitSpawn — update init counters when true
    */
-  async _spawnAgent(agentDef, index, cx = 656, cy = 400) {
+  async _spawnAgent(
+    agentDef,
+    index,
+    cx = 656,
+    cy = 400,
+    trackInitSpawn = false,
+  ) {
     const ring = Math.floor(index / 8);
     const slot = index % 8;
     const angle = (slot / 8) * 2 * Math.PI + ring * 0.4;
@@ -237,11 +359,20 @@ export class ExperimentRunner {
         position,
       });
       this.spriteLookup.set(agentDef.id, sprite.id);
+      this.onAgentUpdate({
+        type: "agent.spawned",
+        agentId: agentDef.id,
+        spriteId: sprite.id,
+        name: agentDef.name,
+      });
+      if (trackInitSpawn) {
+        this._initialSpawned++;
+        this._emitProgress();
+      }
+      return sprite.id;
     } catch (err) {
-      console.warn(
-        `[ExperimentRunner] Failed to spawn ${agentDef.name}:`,
-        err,
-      );
+      console.warn(`[ExperimentRunner] Failed to spawn ${agentDef.name}:`, err);
+      return null;
     }
   }
 
@@ -264,6 +395,7 @@ export class ExperimentRunner {
 
     this.status = RunnerStatus.RUNNING;
     this._aborted = false;
+    this._decidingCount = 0;
     this._emitProgress();
 
     // Rolling concurrency via a shared promise that resolves when everything is done.
@@ -287,21 +419,26 @@ export class ExperimentRunner {
 
         this._activeCount++;
         this._emitProgress();
+        const startedAt = Date.now();
 
-        const p = this._processAgent(agentDef)
+        const p = this._processAgent(agentDef, startedAt)
           .catch((err) => {
-            console.error(`[ExperimentRunner] Agent ${agentDef.name} failed:`, err);
+            console.error(
+              `[ExperimentRunner] Agent ${agentDef.name} failed:`,
+              err,
+            );
             this.responses.push({
               agentId: agentDef.id,
               segmentId: agentDef.segmentId,
               traits: agentDef.traits,
               chosenAlternativeId: null,
               chosenAlternativeName: null,
+              chosen: "NONE",
               reason: `Error: ${err.message}`,
               confidence: 0,
               reasonCodes: [],
               error: true,
-              timings: { startedAt: Date.now(), endedAt: Date.now() },
+              timings: { startedAt, endedAt: Date.now() },
             });
           })
           .finally(() => {
@@ -333,16 +470,14 @@ export class ExperimentRunner {
    * Process a single agent through the full cycle:
    * spawn (if needed) → think → LLM decision → say → moveTo → pick → exit
    */
-  async _processAgent(agentDef) {
-    const startedAt = Date.now();
-
+  async _processAgent(agentDef, startedAt = Date.now()) {
     // Spawn the agent if it wasn't pre-spawned during init
     let spriteId = this.spriteLookup.get(agentDef.id);
     if (!spriteId) {
-      // Use a simple index for positioning (they'll appear near center)
-      const idx = this._completedCount % 8;
-      await this._spawnAgent(agentDef, idx);
-      spriteId = this.spriteLookup.get(agentDef.id) || agentDef.id;
+      // Rolling spawn window around center.
+      const idx = this._spawnCounter++;
+      const spawnedId = await this._spawnAgent(agentDef, idx);
+      spriteId = spawnedId || this.spriteLookup.get(agentDef.id) || agentDef.id;
     }
 
     this.onAgentUpdate({
@@ -351,57 +486,80 @@ export class ExperimentRunner {
       name: agentDef.name,
     });
 
-    // 1. Show thinking indicator
-    this.runtime.showThinking(spriteId);
+    // 1. Simple short wander before decision.
+    try {
+      this.onAgentUpdate({
+        type: "agent.wander",
+        agentId: agentDef.id,
+        spriteId,
+        name: agentDef.name,
+      });
+      await this.runtime.wander(spriteId, {
+        steps: 1 + Math.floor(Math.random() * 2),
+      });
+    } catch (err) {
+      console.warn(
+        `[ExperimentRunner] Wander failed for ${agentDef.name}:`,
+        err,
+      );
+    }
 
-    // 2. Call LLM for decision
-    const decision = await getAgentDecision({
-      agent: agentDef,
-      alternatives: this.alternatives.map((a) => ({
-        id: a.id,
-        name: a.name,
-        features: a.features || {},
-      })),
-      experiment: {
-        name: this.experiment.name,
-        description: this.experiment.description,
-        featureSchema: this.experiment.featureSchema,
-      },
-      modelTag: agentDef.modelTag,
+    // 2. Show thinking indicator
+    this.runtime.showThinking(spriteId);
+    this.onAgentUpdate({
+      type: "agent.thinking",
+      agentId: agentDef.id,
+      spriteId,
+      name: agentDef.name,
     });
 
-    // 3. Clear thinking
-    this.runtime.clearThinking(spriteId);
+    let decision;
+    try {
+      // 3. Call LLM for decision (max 6 in parallel by default)
+      decision = await this._runDecision(() =>
+        getAgentDecision({
+          agent: agentDef,
+          alternatives: this.alternatives.map((a) => ({
+            id: a.id,
+            name: a.name,
+            features: a.features || {},
+          })),
+          experiment: {
+            name: this.experiment.name,
+            description: this.experiment.description,
+            featureSchema: this.experiment.featureSchema,
+          },
+          modelTag: agentDef.modelTag,
+        }),
+      );
+    } finally {
+      // 4. Clear thinking regardless of decision outcome
+      this.runtime.clearThinking(spriteId);
+    }
+
+    const normalizedDecision = this._normalizeDecision(decision);
 
     const chosenAlt = this.alternatives.find(
-      (a) => a.id === decision.chosenAlternativeId,
+      (a) => a.id === normalizedDecision.chosenAlternativeId,
     );
     const chosenOptionId = chosenAlt
       ? this.altToOptionId.get(chosenAlt.id)
       : null;
 
-    this.onAgentUpdate({
-      type: "agent.decided",
-      agentId: agentDef.id,
-      name: agentDef.name,
-      chosen: chosenAlt?.name || "None",
-      reason: decision.reason,
-      confidence: decision.confidence,
-      error: decision.error || null,
-    });
-
-    if (decision.error || !chosenOptionId) {
-      // LLM failed — say error, then exit
-      await this.runtime.say(spriteId, decision.error || "Could not decide...");
+    if (normalizedDecision.error) {
+      await this.runtime.say(
+        spriteId,
+        this._truncateText(normalizedDecision.reason || "Could not decide..."),
+      );
       await this.runtime.exit(spriteId);
-
       this.responses.push({
         agentId: agentDef.id,
         segmentId: agentDef.segmentId,
         traits: agentDef.traits,
         chosenAlternativeId: null,
         chosenAlternativeName: null,
-        reason: decision.error || "No decision",
+        chosen: "NONE",
+        reason: normalizedDecision.reason || "No decision",
         confidence: 0,
         reasonCodes: [],
         error: true,
@@ -410,27 +568,96 @@ export class ExperimentRunner {
       return;
     }
 
-    // 4. Say the reason
-    const reasonText =
-      decision.reason.length > 60
-        ? `${decision.reason.slice(0, 57)}...`
-        : decision.reason;
-    await this.runtime.say(spriteId, reasonText);
+    if (normalizedDecision.chosenAlternativeId === "NONE") {
+      this.onAgentUpdate({
+        type: "agent.decided_none",
+        agentId: agentDef.id,
+        spriteId,
+        name: agentDef.name,
+        chosen: "None",
+        reason: normalizedDecision.reason,
+        confidence: normalizedDecision.confidence,
+      });
 
-    // 5. Move to chosen building
+      await this.runtime.say(
+        spriteId,
+        this._truncateText(normalizedDecision.reason),
+      );
+      await this.runtime.exit(spriteId);
+
+      this.responses.push({
+        agentId: agentDef.id,
+        segmentId: agentDef.segmentId,
+        traits: agentDef.traits,
+        chosenAlternativeId: null,
+        chosenAlternativeName: null,
+        chosen: "NONE",
+        reason: normalizedDecision.reason,
+        confidence: normalizedDecision.confidence,
+        reasonCodes: normalizedDecision.reasonCodes,
+        error: false,
+        timings: { startedAt, endedAt: Date.now() },
+      });
+      return;
+    }
+
+    this.onAgentUpdate({
+      type: "agent.decided",
+      agentId: agentDef.id,
+      spriteId,
+      name: agentDef.name,
+      chosen:
+        chosenAlt?.name || normalizedDecision.chosenAlternativeId || "None",
+      reason: normalizedDecision.reason,
+      confidence: normalizedDecision.confidence,
+      warning: normalizedDecision.warning,
+    });
+
+    if (!chosenOptionId) {
+      await this.runtime.say(
+        spriteId,
+        this._truncateText(
+          `Could not map choice "${normalizedDecision.chosenAlternativeId}".`,
+        ),
+      );
+      await this.runtime.exit(spriteId);
+
+      this.responses.push({
+        agentId: agentDef.id,
+        segmentId: agentDef.segmentId,
+        traits: agentDef.traits,
+        chosenAlternativeId: null,
+        chosenAlternativeName: null,
+        chosen: "NONE",
+        reason: `Invalid mapped choice: ${normalizedDecision.chosenAlternativeId}`,
+        confidence: 0,
+        reasonCodes: [],
+        error: true,
+        timings: { startedAt, endedAt: Date.now() },
+      });
+      return;
+    }
+
+    // 5. Say the reason
+    await this.runtime.say(
+      spriteId,
+      this._truncateText(normalizedDecision.reason),
+    );
+
+    // 6. Move to chosen building
     await this.runtime.moveTo(spriteId, chosenOptionId);
 
-    // 6. Pick from chosen building
+    // 7. Pick from chosen building
     try {
       await this.runtime.pick(spriteId, chosenOptionId);
     } catch {
       // pick can fail if range is slightly off — not critical
     }
 
-    // 7. Exit the world
+    // 8. Exit the world
     await this.runtime.exit(spriteId);
 
-    // 8. Record the response
+    // 9. Record the response
     const endedAt = Date.now();
     this.responses.push({
       agentId: agentDef.id,
@@ -439,9 +666,9 @@ export class ExperimentRunner {
       chosenAlternativeId: chosenAlt.id,
       chosenAlternativeName: chosenAlt.name,
       chosen: chosenAlt.id, // alias for aggregate compat
-      reason: decision.reason,
-      confidence: decision.confidence,
-      reasonCodes: decision.reasonCodes || [],
+      reason: normalizedDecision.reason,
+      confidence: normalizedDecision.confidence,
+      reasonCodes: normalizedDecision.reasonCodes,
       error: false,
       timings: { startedAt, endedAt },
     });
@@ -482,7 +709,52 @@ export class ExperimentRunner {
       total: this._totalCount,
       completed: this._completedCount,
       active: this._activeCount,
+      deciding: this._decidingCount,
       pending: this.agentQueue.length,
+      optionsTotal: this._optionsTotal,
+      optionsReady: this._optionsReady,
+      optionsFailed: this._optionsFailed,
+      initialSpawnTarget: this._initialSpawnTarget,
+      initialSpawned: this._initialSpawned,
     });
+  }
+
+  async _runDecision(decisionTask) {
+    return this.decisionLimiter.run(async () => {
+      this._decidingCount++;
+      this._emitProgress();
+      try {
+        return await decisionTask();
+      } finally {
+        this._decidingCount = Math.max(0, this._decidingCount - 1);
+        this._emitProgress();
+      }
+    });
+  }
+
+  _normalizeDecision(decision) {
+    const confidence = clamp(
+      Number.parseFloat(decision?.confidence) || 0.5,
+      0,
+      1,
+    );
+    const reason = (decision?.reason || "I made a decision.").trim();
+    const reasonCodes = Array.isArray(decision?.reasonCodes)
+      ? decision.reasonCodes.filter((code) => typeof code === "string")
+      : [];
+    return {
+      chosenAlternativeId: decision?.chosenAlternativeId || "NONE",
+      reason,
+      confidence,
+      reasonCodes,
+      error: decision?.error || null,
+      warning: decision?.warning || null,
+    };
+  }
+
+  _truncateText(text, maxLength = 60) {
+    if (!text) return "...";
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength - 3)}...`;
   }
 }

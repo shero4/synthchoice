@@ -267,6 +267,67 @@ export class SimWorldRuntime {
   // Actions
   // ----------------------------------------------------------------
 
+  /**
+   * Wander around the current area with short cardinal steps.
+   * Keeps movement readable and avoids jittery random motion.
+   */
+  async wander(spriteId, options = {}) {
+    const character = this.store.getState().characters[spriteId];
+    if (!character) {
+      throw new Error(`Sprite "${spriteId}" not found.`);
+    }
+
+    const steps = Math.max(1, Number.parseInt(options.steps, 10) || 2);
+    const minDistance = Math.max(
+      10,
+      Number.parseInt(options.minDistance, 10) || 24,
+    );
+    const maxDistance = Math.max(
+      minDistance + 4,
+      Number.parseInt(options.maxDistance, 10) || 56,
+    );
+    const margin = 28;
+    const directions = [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+    ];
+
+    this._emitAction(spriteId, "wander", { steps });
+
+    let current = { ...character.position };
+
+    for (let i = 0; i < steps; i++) {
+      const dir = directions[Math.floor(Math.random() * directions.length)];
+      const distance =
+        minDistance + Math.random() * (maxDistance - minDistance);
+      const target = {
+        x: Math.max(
+          margin,
+          Math.min(WORLD_CONFIG.width - margin, current.x + dir.x * distance),
+        ),
+        y: Math.max(
+          margin,
+          Math.min(WORLD_CONFIG.height - margin, current.y + dir.y * distance),
+        ),
+      };
+
+      const waypoints = getPath(current, target);
+      if (!waypoints.length) continue;
+
+      await this._walkAlongPath(
+        spriteId,
+        current,
+        waypoints,
+        CHARACTER_STATES.WALKING_TO_STATION,
+      );
+      current = { ...target };
+    }
+
+    this.engine.setCharacterState(spriteId, CHARACTER_STATES.IDLE, "down");
+  }
+
   async say(spriteId, message) {
     const text = message || "...";
     this.engine.showSpeechBubble(

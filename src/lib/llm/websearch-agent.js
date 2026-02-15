@@ -208,20 +208,22 @@ async function searchProductImage(productName) {
  *   searchResults: Array
  * }>}
  */
-export async function searchProductForSprite(productQuery, _options = {}) {
+export async function searchProductForSprite(productQuery, options = {}) {
   if (!productQuery || typeof productQuery !== "string") {
     throw new Error("productQuery is required and must be a string");
   }
 
   const productName = productQuery.trim();
+  const includeSpriteDescription = options.includeSpriteDescription !== false;
 
   // Step 1: Generate sprite description using LLM (tries Gemini, OpenRouter, Anthropic)
-  let spriteDescription = "";
-  try {
-    spriteDescription = await generateSpriteDescription(productName);
-  } catch (err) {
-    console.warn("Failed to generate sprite description:", err.message);
-    spriteDescription = `A pixel art representation of ${productName}`;
+  let spriteDescription = `A pixel art representation of ${productName}`;
+  if (includeSpriteDescription) {
+    try {
+      spriteDescription = await generateSpriteDescription(productName);
+    } catch (err) {
+      console.warn("Failed to generate sprite description:", err.message);
+    }
   }
 
   // Step 2: Search for clip art image (returns multiple URLs for reliability)
@@ -240,11 +242,12 @@ export async function searchProductForSprite(productQuery, _options = {}) {
     spriteDescription,
     productName,
     confidence: imageUrls.length > 0 ? "medium" : "low",
-    searchResults: imageResults?.slice(0, 5).map((r) => ({
-      title: r.title || productName,
-      url: r.imageUrl,
-      snippet: `Source: ${r.source || "image search"}`,
-    })) ?? [],
+    searchResults:
+      imageResults?.slice(0, 5).map((r) => ({
+        title: r.title || productName,
+        url: r.imageUrl,
+        snippet: `Source: ${r.source || "image search"}`,
+      })) ?? [],
   };
 }
 
@@ -298,19 +301,43 @@ export async function fetchImageAsDataUrl(imageUrl, options = {}) {
 /**
  * Try fetching from multiple URLs; returns first successful data URL
  */
-export async function fetchImageFromUrls(imageUrls) {
+export async function fetchImageFromUrls(imageUrls, options = {}) {
   if (!imageUrls?.length) {
     throw new Error("imageUrls is required and must be non-empty");
   }
 
+  const concurrency = Math.max(
+    1,
+    Number.parseInt(options.concurrency, 10) || 3,
+  );
   const errors = [];
-  for (const url of imageUrls) {
-    try {
-      return await fetchImageAsDataUrl(url);
-    } catch (err) {
-      errors.push({ url, error: err.message });
-      console.warn(`Image fetch failed for ${url.slice(0, 50)}...:`, err.message);
+
+  // Try URLs in small parallel batches to reduce time-to-first-success.
+  for (let i = 0; i < imageUrls.length; i += concurrency) {
+    const batch = imageUrls.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(
+      batch.map((url) => fetchImageAsDataUrl(url)),
+    );
+
+    const firstSuccess = settled.find((r) => r.status === "fulfilled");
+    if (firstSuccess?.status === "fulfilled") {
+      return firstSuccess.value;
     }
+
+    settled.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const url = batch[index];
+        errors.push({ url, error: result.reason?.message || "Unknown error" });
+        console.warn(
+          `Image fetch failed for ${url.slice(0, 50)}...:`,
+          result.reason?.message || "Unknown error",
+        );
+      }
+    });
+  }
+
+  if (errors.length === 0) {
+    throw new Error("All image URL fetch attempts failed.");
   }
 
   throw new Error(
@@ -333,7 +360,7 @@ export async function searchAndFetchProductImage(productQuery, options = {}) {
       : [];
   if (urls.length > 0) {
     try {
-      imageDataUrl = await fetchImageFromUrls(urls);
+      imageDataUrl = await fetchImageFromUrls(urls, { concurrency: 3 });
     } catch (err) {
       console.warn("Failed to fetch image from any URL:", err.message);
     }

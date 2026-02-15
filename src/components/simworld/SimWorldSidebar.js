@@ -4,13 +4,23 @@ import {
   ArrowRightOutlined,
   BulbOutlined,
   CheckCircleOutlined,
+  ClockCircleOutlined,
   LoadingOutlined,
   LogoutOutlined,
   MessageOutlined,
   ThunderboltOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Badge, Card, Collapse, Empty, List, Tag, Typography } from "antd";
+import {
+  Badge,
+  Card,
+  Collapse,
+  Empty,
+  List,
+  Tabs,
+  Tag,
+  Typography,
+} from "antd";
 
 const { Text } = Typography;
 
@@ -24,7 +34,10 @@ const ACTION_ICONS = {
   "thinking.end": <BulbOutlined />,
   "agent.spawned": <UserOutlined />,
   "agent.processing": <LoadingOutlined />,
+  "agent.wander": <ArrowRightOutlined />,
+  "agent.thinking": <LoadingOutlined />,
   "agent.decided": <ThunderboltOutlined />,
+  "agent.decided_none": <BulbOutlined />,
   "sprite.removed": <LogoutOutlined />,
 };
 
@@ -38,12 +51,17 @@ const ACTION_COLORS = {
   "thinking.end": "cyan",
   "agent.spawned": "purple",
   "agent.processing": "processing",
+  "agent.wander": "green",
+  "agent.thinking": "processing",
   "agent.decided": "orange",
+  "agent.decided_none": "cyan",
   "sprite.removed": "default",
 };
 
 function formatTime(timestamp) {
+  if (timestamp === undefined || timestamp === null) return "--:--:--";
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "--:--:--";
   return date.toLocaleTimeString("en-US", {
     hour12: false,
     hour: "2-digit",
@@ -52,7 +70,11 @@ function formatTime(timestamp) {
   });
 }
 
-function ActionItem({ action }) {
+function getSpriteFallbackName(spriteId) {
+  return `Sprite ${spriteId}`;
+}
+
+function ActionItem({ action, showActor = false, actorMeta = null }) {
   let description = "";
   switch (action.type) {
     case "say":
@@ -82,6 +104,12 @@ function ActionItem({ action }) {
     case "agent.processing":
       description = `Processing: ${action.detail?.name || "Agent"}`;
       break;
+    case "agent.wander":
+      description = "Roaming around the plaza";
+      break;
+    case "agent.thinking":
+      description = "Thinking...";
+      break;
     case "agent.decided": {
       const chosen = action.detail?.chosen || "?";
       const conf = action.detail?.confidence;
@@ -91,12 +119,24 @@ function ActionItem({ action }) {
         : `Chose ${chosen}${confStr}`;
       break;
     }
+    case "agent.decided_none": {
+      const conf = action.detail?.confidence;
+      const confStr = conf !== undefined ? ` (${Math.round(conf * 100)}%)` : "";
+      description = `Chose nothing${confStr}`;
+      break;
+    }
     case "sprite.removed":
       description = "Left the world";
       break;
     default:
       description = action.type;
   }
+
+  const actorName = action.spriteId
+    ? actorMeta?.name || getSpriteFallbackName(action.spriteId)
+    : "System";
+  const actorStatus = action.spriteId ? actorMeta?.status : null;
+  const actorStatusColor = actorStatus === "active" ? "green" : "default";
 
   return (
     <div
@@ -115,6 +155,25 @@ function ActionItem({ action }) {
         {action.type}
       </Tag>
       <div style={{ flex: 1, minWidth: 0 }}>
+        {showActor && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: 2,
+            }}
+          >
+            <Text strong style={{ fontSize: 11 }}>
+              {actorName}
+            </Text>
+            {actorStatus && (
+              <Tag color={actorStatusColor} style={{ margin: 0, fontSize: 10 }}>
+                {actorStatus}
+              </Tag>
+            )}
+          </div>
+        )}
         <Text style={{ fontSize: 12, display: "block" }} ellipsis>
           {description}
         </Text>
@@ -126,7 +185,57 @@ function ActionItem({ action }) {
   );
 }
 
-export default function SimWorldSidebar({ sprites, actionLog }) {
+export default function SimWorldSidebar({ sprites = [], actionLog = [] }) {
+  const spriteMetaById = {};
+
+  for (const action of actionLog) {
+    if (!action.spriteId) continue;
+
+    const fallbackName = getSpriteFallbackName(action.spriteId);
+    const existing = spriteMetaById[action.spriteId] || {
+      id: action.spriteId,
+      name: fallbackName,
+      persona: "Agent",
+      color: "#64748b",
+      status: "exited",
+    };
+
+    const detail = action.detail || {};
+    const nextMeta = {
+      ...existing,
+      name:
+        detail.name && existing.name === fallbackName
+          ? detail.name
+          : existing.name,
+      persona:
+        detail.persona && existing.persona === "Agent"
+          ? detail.persona
+          : existing.persona,
+    };
+
+    if (action.type === "sprite.added") {
+      nextMeta.status = "active";
+      nextMeta.name = detail.name || nextMeta.name;
+      nextMeta.persona = detail.persona || nextMeta.persona;
+    }
+    if (action.type === "exit" || action.type === "sprite.removed") {
+      nextMeta.status = "exited";
+    }
+
+    spriteMetaById[action.spriteId] = nextMeta;
+  }
+
+  for (const sprite of sprites) {
+    spriteMetaById[sprite.id] = {
+      ...(spriteMetaById[sprite.id] || {}),
+      id: sprite.id,
+      name: sprite.name || getSpriteFallbackName(sprite.id),
+      persona: sprite.persona || "Agent",
+      color: sprite.color || "#64748b",
+      status: "active",
+    };
+  }
+
   // Group actions by spriteId
   const actionsBySprite = {};
   for (const action of actionLog) {
@@ -171,6 +280,44 @@ export default function SimWorldSidebar({ sprites, actionLog }) {
     ),
   }));
 
+  const spritesTabContent =
+    sprites.length === 0
+      ? <Empty
+          description="No sprites yet"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          style={{ padding: "40px 0" }}
+        />
+      : <Collapse
+          items={collapseItems}
+          defaultActiveKey={sprites.map((s) => s.id)}
+          ghost
+          size="small"
+        />;
+
+  const activityTabContent =
+    actionLog.length === 0
+      ? <Empty
+          description="No actions yet"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          style={{ padding: "40px 0" }}
+        />
+      : <div style={{ maxHeight: 480, overflowY: "auto", paddingRight: 4 }}>
+          <List
+            dataSource={[...actionLog].reverse()}
+            renderItem={(action) => (
+              <ActionItem
+                action={action}
+                showActor
+                actorMeta={
+                  action.spriteId ? spriteMetaById[action.spriteId] : null
+                }
+              />
+            )}
+            split={false}
+            size="small"
+          />
+        </div>;
+
   return (
     <Card
       style={{
@@ -201,18 +348,32 @@ export default function SimWorldSidebar({ sprites, actionLog }) {
         </div>
       }
     >
-      {sprites.length === 0
-        ? <Empty
-            description="No sprites yet"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            style={{ padding: "40px 0" }}
-          />
-        : <Collapse
-            items={collapseItems}
-            defaultActiveKey={sprites.map((s) => s.id)}
-            ghost
-            size="small"
-          />}
+      <Tabs
+        defaultActiveKey="sprites"
+        size="small"
+        tabBarStyle={{ margin: 0, padding: "0 12px" }}
+        items={[
+          {
+            key: "sprites",
+            label: `Sprites (${sprites.length})`,
+            children: (
+              <div style={{ padding: "8px 12px" }}>{spritesTabContent}</div>
+            ),
+          },
+          {
+            key: "activity",
+            label: (
+              <span>
+                <ClockCircleOutlined style={{ marginRight: 4 }} />
+                {`Activity Log (${actionLog.length})`}
+              </span>
+            ),
+            children: (
+              <div style={{ padding: "8px 12px" }}>{activityTabContent}</div>
+            ),
+          },
+        ]}
+      />
     </Card>
   );
 }

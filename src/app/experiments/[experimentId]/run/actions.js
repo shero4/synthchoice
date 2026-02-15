@@ -1,11 +1,11 @@
 "use server";
 
 import {
-  invoke_llm,
-  Models,
-  MODEL_TO_PROVIDER,
-  searchProductForSprite,
   fetchImageFromUrls,
+  invoke_llm,
+  MODEL_TO_PROVIDER,
+  Models,
+  searchProductForSprite,
 } from "@/lib/llm";
 import { postprocessSpriteSheet } from "@/lib/sprites/process";
 import { SPRITE_PROMPT } from "@/lib/sprites/prompt";
@@ -64,7 +64,9 @@ function resolveModel(modelTag) {
   }
 
   // Default fallback
-  console.warn(`[resolveModel] Unknown model "${modelTag}", falling back to Gemini 2.5 Flash`);
+  console.warn(
+    `[resolveModel] Unknown model "${modelTag}", falling back to Gemini 2.5 Flash`,
+  );
   return Models.GEMINI_2_5_FLASH;
 }
 
@@ -133,6 +135,9 @@ function buildPersonaSection(agent) {
   const lines = ["## Your Persona"];
   lines.push("You are a synthetic consumer with the following profile:\n");
 
+  if (agent.label) {
+    lines.push(`- **Segment:** ${agent.label}`);
+  }
   if (traits.personality) {
     lines.push(`- **Personality type:** ${traits.personality}`);
   }
@@ -181,11 +186,11 @@ function buildPersonaSection(agent) {
 }
 
 function buildInstructionsSection(alternativeIds) {
-  const idList = alternativeIds.map((id) => `"${id}"`).join(", ");
+  const idList = [...alternativeIds, "NONE"].map((id) => `"${id}"`).join(", ");
 
   return `## Decision Instructions
 
-Evaluate each option based on your persona. Think about which features matter most to someone like you, then choose the ONE option that best fits.
+Evaluate each option based on your persona. Think about which features matter most to someone like you, then choose the ONE best option, or choose NONE if nothing is good enough.
 
 Respond with ONLY a valid JSON object (no markdown fences, no commentary outside the JSON):
 
@@ -196,7 +201,7 @@ Respond with ONLY a valid JSON object (no markdown fences, no commentary outside
   "reasonCodes": ["<feature_key_1>", "<feature_key_2>"]
 }
 
-- **chosenAlternativeId**: must be one of the provided IDs exactly.
+- **chosenAlternativeId**: must be one of the provided IDs exactly, or "NONE".
 - **reason**: brief, in-character explanation.
 - **confidence**: how sure you are (0.0 = random guess, 1.0 = absolutely certain).
 - **reasonCodes**: the 1–3 feature keys that most influenced your decision.`;
@@ -205,6 +210,48 @@ Respond with ONLY a valid JSON object (no markdown fences, no commentary outside
 // ---------------------------------------------------------------------------
 // Main server action
 // ---------------------------------------------------------------------------
+
+function extractJsonObject(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (!jsonMatch) {
+      throw new Error("No parsable JSON object found.");
+    }
+    return JSON.parse(jsonMatch[1]);
+  }
+}
+
+function normalizeChoice(rawChoice, alternatives, alternativeIds) {
+  const normalized = String(rawChoice || "")
+    .trim()
+    .replace(/^"+|"+$/g, "")
+    .toLowerCase();
+
+  if (!normalized) return null;
+
+  if (
+    normalized === "none" ||
+    normalized === "no choice" ||
+    normalized === "no_choice" ||
+    normalized === "skip" ||
+    normalized === "nothing" ||
+    normalized === "no pick"
+  ) {
+    return "NONE";
+  }
+
+  const exactId = alternativeIds.find((id) => id.toLowerCase() === normalized);
+  if (exactId) return exactId;
+
+  const byName = alternatives.find(
+    (a) => String(a.name || "").toLowerCase() === normalized,
+  );
+  if (byName) return byName.id;
+
+  return null;
+}
 
 /**
  * Get an LLM-powered decision for a synthetic agent.
@@ -216,12 +263,24 @@ Respond with ONLY a valid JSON object (no markdown fences, no commentary outside
  * @param {string} params.modelTag    — segment model tag (e.g. "google/gemini-2.5-flash")
  * @returns {Promise<{ chosenAlternativeId: string, reason: string, confidence: number, reasonCodes: string[], error?: string }>}
  */
-export async function getAgentDecision({ agent, alternatives, experiment, modelTag }) {
+export async function getAgentDecision({
+  agent,
+  alternatives,
+  experiment,
+  modelTag,
+}) {
   if (!alternatives || alternatives.length === 0) {
-    return { error: "No alternatives provided", chosenAlternativeId: null, reason: "", confidence: 0, reasonCodes: [] };
+    return {
+      error: "No alternatives provided",
+      chosenAlternativeId: null,
+      reason: "",
+      confidence: 0,
+      reasonCodes: [],
+    };
   }
 
   const features = experiment?.featureSchema?.features || [];
+  const featureKeys = new Set(features.map((f) => f.key));
   const alternativeIds = alternatives.map((a) => a.id);
 
   // Build prompt sections
@@ -253,65 +312,71 @@ export async function getAgentDecision({ agent, alternatives, experiment, modelT
     });
 
     if (!result.content) {
-      return { error: "Empty LLM response", chosenAlternativeId: null, reason: "", confidence: 0, reasonCodes: [] };
+      return {
+        error: "Empty LLM response",
+        chosenAlternativeId: null,
+        reason: "",
+        confidence: 0,
+        reasonCodes: [],
+      };
     }
 
-    // Parse the response
     let parsed;
     try {
-      parsed = JSON.parse(result.content);
-    } catch {
-      // Try extracting JSON from markdown fences
-      const jsonMatch = result.content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[1]);
-      } else {
-        return {
-          error: `Failed to parse LLM JSON: ${result.content.slice(0, 200)}`,
-          chosenAlternativeId: null,
-          reason: "",
-          confidence: 0,
-          reasonCodes: [],
-        };
-      }
+      parsed = extractJsonObject(result.content);
+    } catch (parseErr) {
+      return {
+        chosenAlternativeId: "NONE",
+        reason:
+          "I could not confidently parse all options, so I skipped this round.",
+        confidence: 0.1,
+        reasonCodes: [],
+        warning: `Parse fallback: ${parseErr.message}`,
+      };
     }
 
-    // Validate chosenAlternativeId
-    const chosenId = parsed.chosenAlternativeId || parsed.chosen_alternative_id || parsed.chosen;
-    if (!chosenId || !alternativeIds.includes(chosenId)) {
-      // Try fuzzy match — the LLM may have returned the name instead of ID
-      const matchByName = alternatives.find(
-        (a) => a.name.toLowerCase() === (chosenId || "").toLowerCase(),
-      );
-      if (matchByName) {
-        parsed.chosenAlternativeId = matchByName.id;
-      } else {
-        return {
-          error: `Invalid choice "${chosenId}". Valid IDs: ${alternativeIds.join(", ")}`,
-          chosenAlternativeId: null,
-          reason: parsed.reason || "",
-          confidence: 0,
-          reasonCodes: [],
-        };
-      }
-    } else {
-      parsed.chosenAlternativeId = chosenId;
+    const chosenRaw =
+      parsed.chosenAlternativeId ||
+      parsed.chosen_alternative_id ||
+      parsed.chosen;
+    const normalizedChoice = normalizeChoice(
+      chosenRaw,
+      alternatives,
+      alternativeIds,
+    );
+
+    if (!normalizedChoice) {
+      return {
+        chosenAlternativeId: "NONE",
+        reason:
+          parsed.reason ||
+          "I could not map a valid option, so I chose nothing.",
+        confidence: 0.1,
+        reasonCodes: [],
+        warning: `Invalid choice "${chosenRaw}"`,
+      };
     }
+
+    const normalizedReasonCodes = Array.isArray(parsed.reasonCodes)
+      ? parsed.reasonCodes
+          .filter((code) => typeof code === "string" && featureKeys.has(code))
+          .slice(0, 3)
+      : [];
 
     return {
-      chosenAlternativeId: parsed.chosenAlternativeId,
+      chosenAlternativeId: normalizedChoice,
       reason: parsed.reason || "Made a choice based on overall evaluation.",
       confidence: Math.min(1, Math.max(0, Number(parsed.confidence) || 0.5)),
-      reasonCodes: Array.isArray(parsed.reasonCodes) ? parsed.reasonCodes : [],
+      reasonCodes: normalizedReasonCodes,
     };
   } catch (err) {
     console.error("[getAgentDecision] LLM error:", err);
     return {
-      error: err.message || "LLM invocation failed",
-      chosenAlternativeId: null,
-      reason: "",
-      confidence: 0,
+      chosenAlternativeId: "NONE",
+      reason: "I could not evaluate the options in time, so I chose nothing.",
+      confidence: 0.05,
       reasonCodes: [],
+      warning: err.message || "LLM invocation failed",
     };
   }
 }
@@ -334,6 +399,7 @@ export async function generateAlternativeSprite(productName) {
     // 1. Search for a product image
     const searchResult = await searchProductForSprite(productName.trim(), {
       maxSearches: 3,
+      includeSpriteDescription: false,
     });
 
     const urls = [
