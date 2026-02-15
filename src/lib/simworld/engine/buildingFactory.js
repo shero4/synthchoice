@@ -1,9 +1,4 @@
-import { Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
-import { HOUSE_VARIANTS, SCALE } from "../config";
-
-// Single canonical house from RPG_MAKER_MV Houses (768×768, 48px tiles)
-// One complete red-roof house — region in pixels
-const SINGLE_HOUSE = { x: 0, y: 96, w: 144, h: 144 };
+import { Container, Graphics, Text } from "pixi.js";
 
 /**
  * Creates a building sprite from the Serene Village tileset.
@@ -12,37 +7,71 @@ const SINGLE_HOUSE = { x: 0, y: 96, w: 144, h: 144 };
  * @param {string} shopType   — one of the HOUSE_VARIANTS keys (cafe, library, etc.)
  * @param {object} position   — { x, y } in pixel coordinates
  * @param {string} label     — display label for the shop sign
- * @param {Texture} tilesetTexture — main 16x16 tileset (fallback)
- * @param {Texture} [housesTexture] — optional RPG Maker MV houses image (preferred)
+ * @param {Texture} tilesetTexture — unused
+ * @param {Texture} [housesTexture] — unused
  * @returns {Container} PixiJS container with the building + sign
  */
 export function createBuilding(shopType, position, label, tilesetTexture, housesTexture) {
   const container = new Container();
 
-  let houseSprite;
+  // --- Custom full house (prevents broken crop/slicing) ---
+  const house = new Container();
 
-  if (housesTexture?.source) {
-    // Use one clean house from the Houses tileset (Serene Village reference style)
-    const houseTexture = new Texture({
-      source: housesTexture.source,
-      frame: new Rectangle(SINGLE_HOUSE.x, SINGLE_HOUSE.y, SINGLE_HOUSE.w, SINGLE_HOUSE.h),
-    });
-    houseSprite = new Sprite(houseTexture);
-    houseSprite.width = SINGLE_HOUSE.w * (SCALE * 0.5); // 144 -> 144px on screen
-    houseSprite.height = SINGLE_HOUSE.h * (SCALE * 0.5);
-  } else {
-    const variant = HOUSE_VARIANTS[shopType] || HOUSE_VARIANTS.cafe;
-    const houseTexture = new Texture({
-      source: tilesetTexture.source,
-      frame: new Rectangle(variant.x, variant.y, variant.w, variant.h),
-    });
-    houseSprite = new Sprite(houseTexture);
-    houseSprite.width = variant.w * SCALE;
-    houseSprite.height = variant.h * SCALE;
+  // roof shadow
+  const roofShadow = new Graphics();
+  roofShadow.roundRect(-60, -100, 120, 22, 6).fill({ color: 0x5e1b14, alpha: 0.5 });
+  house.addChild(roofShadow);
+
+  // roof
+  const roof = new Graphics();
+  roof.roundRect(-62, -108, 124, 28, 6).fill(0xd14d3f);
+  roof.roundRect(-58, -103, 116, 7, 4).fill({ color: 0xeb7b67, alpha: 0.9 });
+  for (let x = -50; x <= 50; x += 20) {
+    roof.rect(x, -108, 3, 28).fill({ color: 0xb23e32, alpha: 0.85 });
   }
+  house.addChild(roof);
 
-  houseSprite.anchor.set(0.5, 0.85);
-  container.addChild(houseSprite);
+  // walls
+  const wall = new Graphics();
+  wall.roundRect(-54, -80, 108, 70, 4).fill(0xe8d8bc);
+  wall.roundRect(-54, -80, 108, 10, 4).fill(0xdcc6a6);
+  wall.roundRect(-54, -20, 108, 10, 3).fill(0xcbb390);
+  house.addChild(wall);
+
+  // door
+  const door = new Graphics();
+  door.roundRect(-12, -62, 24, 44, 3).fill(0x96553a);
+  door.roundRect(-10, -60, 20, 10, 2).fill(0xb46a47);
+  door.circle(7, -40, 2).fill(0xf5d178);
+  house.addChild(door);
+
+  // windows
+  const win = new Graphics();
+  win.roundRect(-42, -62, 22, 18, 2).fill(0x93c9ea);
+  win.roundRect(20, -62, 22, 18, 2).fill(0x93c9ea);
+  win.rect(-31, -62, 2, 18).fill(0x6b9fbe);
+  win.rect(31, -62, 2, 18).fill(0x6b9fbe);
+  win.rect(-42, -54, 22, 2).fill(0x6b9fbe);
+  win.rect(20, -54, 22, 2).fill(0x6b9fbe);
+  house.addChild(win);
+
+  // porch
+  const porch = new Graphics();
+  porch.roundRect(-28, -18, 56, 16, 3).fill(0xbaa17f);
+  porch.roundRect(-36, -2, 72, 12, 3).fill(0xcab291);
+  porch.roundRect(-40, 8, 80, 10, 3).fill(0xb79d7a);
+  house.addChild(porch);
+
+  // little shrubs
+  const shrubs = new Graphics();
+  shrubs.circle(-48, -4, 7).fill(0x4f9f56);
+  shrubs.circle(-40, -5, 6).fill(0x60b668);
+  shrubs.circle(48, -4, 7).fill(0x4f9f56);
+  shrubs.circle(40, -5, 6).fill(0x60b668);
+  house.addChild(shrubs);
+
+  house.zIndex = 1;
+  container.addChild(house);
 
   // --- Shop sign with label text ---
   const signBg = new Graphics();
@@ -52,7 +81,7 @@ export function createBuilding(shopType, position, label, tilesetTexture, houses
     .roundRect(-signWidth / 2, 0, signWidth, signHeight, 4)
     .fill({ color: 0xfff8e7, alpha: 0.95 })
     .stroke({ color: 0x8b7355, width: 1.5 });
-  signBg.y = houseSprite.height * 0.35;
+  signBg.y = 24;
   container.addChild(signBg);
 
   const signText = new Text({
@@ -72,7 +101,7 @@ export function createBuilding(shopType, position, label, tilesetTexture, houses
   // Position the entire container at the tile position
   container.x = position.x;
   container.y = position.y;
-  container.zIndex = position.y + houseSprite.height * 0.3;
+  container.zIndex = position.y + 24;
 
   return container;
 }
