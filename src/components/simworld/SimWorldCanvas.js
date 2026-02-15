@@ -18,11 +18,17 @@ export default function SimWorldCanvas({ onReady }) {
     const runtime = createSimWorld();
     runtimeRef.current = runtime;
 
-    runtime.attach(containerRef.current).then(() => {
-      if (mounted) {
-        onReadyRef.current?.(runtime);
-      }
-    });
+    runtime
+      .attach(containerRef.current)
+      .then(() => {
+        if (mounted) {
+          onReadyRef.current?.(runtime);
+        }
+      })
+      .catch((error) => {
+        // Surface canvas init failures so they are visible in browser console.
+        console.error("SimWorld attach failed:", error);
+      });
 
     return () => {
       mounted = false;
@@ -35,9 +41,10 @@ export default function SimWorldCanvas({ onReady }) {
       ref={containerRef}
       style={{
         width: "100%",
+        maxWidth: 1280,
         height: "100%",
         minHeight: 500,
-        background: "#e8f5e9",
+        background: "#2d5a27",
         borderRadius: 8,
         overflow: "hidden",
       }}

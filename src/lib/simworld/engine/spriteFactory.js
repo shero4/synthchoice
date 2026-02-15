@@ -1,202 +1,229 @@
-import { Assets, Container, Graphics, Rectangle, Texture } from "pixi.js";
+import { Container, Graphics, Rectangle, Texture } from "pixi.js";
 
-function shadeHex(hex, delta = 0) {
-  const normalized = hex.replace("#", "");
-  const value =
-    normalized.length === 3
-      ? normalized
-          .split("")
-          .map((part) => `${part}${part}`)
-          .join("")
-      : normalized;
-  const num = Number.parseInt(value, 16);
-  const r = Math.max(0, Math.min(255, ((num >> 16) & 0xff) + delta));
-  const g = Math.max(0, Math.min(255, ((num >> 8) & 0xff) + delta));
-  const b = Math.max(0, Math.min(255, (num & 0xff) + delta));
-  return (r << 16) + (g << 8) + b;
+/**
+ * Frame dimensions for the Pixel Crawler Body_A sprite sheets.
+ * Each sheet is a horizontal strip of 64×64 frames.
+ */
+const FRAME_W = 64;
+const FRAME_H = 64;
+
+// Walk sheets: 384×64 → 6 frames
+const WALK_FRAMES = 6;
+// Idle sheets: 256×64 → 4 frames
+const IDLE_FRAMES = 4;
+
+/**
+ * Slice a horizontal sprite sheet into an array of Texture frames.
+ */
+function sliceSheet(texture, frameCount, frameWidth = FRAME_W, frameHeight = FRAME_H) {
+  const frames = [];
+  for (let i = 0; i < frameCount; i++) {
+    frames.push(
+      new Texture({
+        source: texture.source,
+        frame: new Rectangle(i * frameWidth, 0, frameWidth, frameHeight),
+      }),
+    );
+  }
+  return frames;
 }
 
-function createFrameTexture(app, colorHex, frame) {
+/**
+ * Build 4-directional animations.
+ * When app is provided, uses a procedural clothed character (red shirt, brown pants) to match Serene Village style.
+ *
+ * @param {object} assets — loaded asset textures from assetLoader
+ * @param {object} [app] — PixiJS Application; if provided, uses clothed procedural sprites
+ * @returns {{ idleDown, idleSide, idleUp, walkDown, walkSide, walkUp }}
+ */
+export function buildSpriteAnimations(assets, app) {
+  // Prefer procedural clothed character when we have a renderer (matches reference image)
+  if (app) {
+    return createProceduralAnimations(app, true);
+  }
+  if (assets?.charWalkDown && assets?.charIdleDown) {
+    return {
+      idleDown: sliceSheet(assets.charIdleDown, IDLE_FRAMES),
+      idleSide: sliceSheet(assets.charIdleSide, IDLE_FRAMES),
+      idleUp: sliceSheet(assets.charIdleUp, IDLE_FRAMES),
+      walkDown: sliceSheet(assets.charWalkDown, WALK_FRAMES),
+      walkSide: sliceSheet(assets.charWalkSide, WALK_FRAMES),
+      walkUp: sliceSheet(assets.charWalkUp, WALK_FRAMES),
+    };
+  }
+  return createProceduralAnimations(null, true);
+}
+
+// ---------------------------------------------------------------------------
+// Procedural fallback — simple pixel-art character in 4 directions
+// ---------------------------------------------------------------------------
+
+function makeTexture(drawFn) {
   const container = new Container();
-
-  const shadow = new Graphics();
-  shadow.ellipse(0, 0, 8, 3).fill({ color: 0x0f172a, alpha: 0.22 });
-  shadow.x = 12;
-  shadow.y = 28;
-  container.addChild(shadow);
-
-  const legs = new Graphics();
-  legs
-    .roundRect(7 + frame.legOffset, 20, 4, 8, 1)
-    .fill(shadeHex(colorHex, -10));
-  legs
-    .roundRect(13 - frame.legOffset, 20, 4, 8, 1)
-    .fill(shadeHex(colorHex, -10));
-  container.addChild(legs);
-
-  const torso = new Graphics();
-  torso.roundRect(6, 10 + frame.bodyBob, 12, 12, 2).fill(shadeHex(colorHex, 0));
-  container.addChild(torso);
-
-  const arm = new Graphics();
-  arm
-    .roundRect(frame.armSide === "left" ? 2 : 18, 13 + frame.bodyBob, 3, 9, 1)
-    .fill(shadeHex(colorHex, -18));
-  container.addChild(arm);
-
-  const head = new Graphics();
-  head.circle(12, 7 + frame.bodyBob, 5).fill(shadeHex(colorHex, 24));
-  container.addChild(head);
-
-  const eye = new Graphics();
-  eye.circle(frame.lookLeft ? 10 : 14, 7 + frame.bodyBob, 1).fill(0x0f172a);
-  container.addChild(eye);
-
-  return app.renderer.generateTexture({
-    target: container,
-    frame: new Rectangle(0, 0, 24, 32),
-    resolution: 1,
-  });
+  drawFn(container);
+  // We can't generate textures without a renderer,
+  // so return the container's children's graphics as a placeholder
+  return null;
 }
 
-function createProceduralAnimations(app, baseColor) {
-  const idleFrames = [
-    createFrameTexture(app, baseColor, {
-      legOffset: 0,
-      bodyBob: 0,
-      armSide: "left",
-      lookLeft: false,
-    }),
-    createFrameTexture(app, baseColor, {
-      legOffset: 0,
-      bodyBob: -1,
-      armSide: "right",
-      lookLeft: false,
-    }),
-  ];
+// Clothed character colors (Serene Village / Pokemon reference)
+const SHIRT = 0xb71c1c;      // red
+const SHIRT_DARK = 0x8b0000;
+const PANTS = 0x5d4037;      // brown
+const PANTS_DARK = 0x3e2723;
+const SKIN = 0xe8b896;
+const SKIN_DARK = 0xc49a6c;
+const HAIR = 0x3e2723;
+const HAIR_LIGHT = 0x5d4037;
 
-  const walkFrames = [
-    createFrameTexture(app, baseColor, {
-      legOffset: -1,
-      bodyBob: 0,
-      armSide: "left",
-      lookLeft: true,
-    }),
-    createFrameTexture(app, baseColor, {
-      legOffset: 1,
-      bodyBob: -1,
-      armSide: "right",
-      lookLeft: false,
-    }),
-    createFrameTexture(app, baseColor, {
-      legOffset: -1,
-      bodyBob: 0,
-      armSide: "left",
-      lookLeft: true,
-    }),
-    createFrameTexture(app, baseColor, {
-      legOffset: 1,
-      bodyBob: 1,
-      armSide: "right",
-      lookLeft: false,
-    }),
-  ];
+/**
+ * Draw a single 16×24 frame of a clothed character (red shirt, brown pants, hair).
+ */
+function drawClothedCharacterFrame(opts = {}) {
+  const {
+    bodyBob = 0,
+    legOffset = 0,
+    armSide = "left",
+    lookDir = "down",
+  } = opts;
 
-  const thinkFrames = [
-    createFrameTexture(app, baseColor, {
-      legOffset: 0,
-      bodyBob: 0,
-      armSide: "left",
-      lookLeft: true,
-    }),
-    createFrameTexture(app, baseColor, {
-      legOffset: 0,
-      bodyBob: -1,
-      armSide: "left",
-      lookLeft: true,
-    }),
-    createFrameTexture(app, baseColor, {
-      legOffset: 0,
-      bodyBob: 0,
-      armSide: "left",
-      lookLeft: true,
-    }),
-  ];
+  const g = new Graphics();
 
-  const chooseFrames = [
-    createFrameTexture(app, baseColor, {
-      legOffset: 0,
-      bodyBob: 0,
-      armSide: "right",
-      lookLeft: false,
-    }),
-    createFrameTexture(app, baseColor, {
-      legOffset: 1,
-      bodyBob: -1,
-      armSide: "right",
-      lookLeft: false,
-    }),
-  ];
+  // Shadow
+  g.ellipse(8, 20, 6, 2.5).fill({ color: 0x000000, alpha: 0.25 });
 
-  return {
-    idle: idleFrames,
-    walk: walkFrames,
-    think: thinkFrames,
-    choose: chooseFrames,
-  };
+  // Legs (pants)
+  g.roundRect(5 + legOffset, 14, 3, 8, 1).fill(PANTS);
+  g.roundRect(9 - legOffset, 14, 3, 8, 1).fill(PANTS);
+  g.roundRect(5 + legOffset, 14, 3, 2, 1).fill(PANTS_DARK);
+  g.roundRect(9 - legOffset, 14, 3, 2, 1).fill(PANTS_DARK);
+
+  // Body (shirt)
+  g.roundRect(3, 5 + bodyBob, 11, 10, 2).fill(SHIRT);
+  g.roundRect(3, 5 + bodyBob, 11, 3, 2).fill(SHIRT_DARK);
+
+  // Arms (shirt sleeves or skin)
+  const armX = armSide === "left" ? 0 : 13;
+  g.roundRect(armX, 6 + bodyBob, 2, 8, 1).fill(SHIRT_DARK);
+
+  // Head (skin)
+  g.circle(8, 4 + bodyBob, 5).fill(SKIN);
+  g.circle(8, 3 + bodyBob, 5).fill(SKIN_DARK);
+
+  // Hair (cap on top of head, short brown hair like reference)
+  g.ellipse(8, 0 + bodyBob, 5, 3.5).fill(HAIR);
+  g.roundRect(3, -1 + bodyBob, 10, 5, 1).fill(HAIR);
+
+  // Face (eyes on top of hair so they stay visible)
+  if (lookDir === "down") {
+    g.circle(6, 4 + bodyBob, 1).fill(0x1a1a1a);
+    g.circle(10, 4 + bodyBob, 1).fill(0x1a1a1a);
+  } else if (lookDir !== "up") {
+    g.circle(lookDir === "left" ? 5 : 11, 4 + bodyBob, 1).fill(0x1a1a1a);
+  }
+
+  return g;
 }
 
-async function createFromSheet(metadata) {
-  if (!metadata?.spriteUrl) {
-    return null;
+/**
+ * Legacy single-color frame (used if clothed=false).
+ */
+function drawCharacterFrame(color, opts = {}) {
+  const {
+    bodyBob = 0,
+    legOffset = 0,
+    armSide = "left",
+    lookDir = "down",
+  } = opts;
+
+  const g = new Graphics();
+  g.ellipse(8, 14, 5, 2).fill({ color: 0x000000, alpha: 0.2 });
+  g.roundRect(5 + legOffset, 10, 3, 5, 1).fill(darken(color, 30));
+  g.roundRect(9 - legOffset, 10, 3, 5, 1).fill(darken(color, 30));
+  g.roundRect(4, 4 + bodyBob, 9, 8, 2).fill(color);
+  const armX = armSide === "left" ? 1 : 12;
+  g.roundRect(armX, 6 + bodyBob, 2, 6, 1).fill(darken(color, 20));
+  g.circle(8, 3 + bodyBob, 4).fill(lighten(color, 20));
+  if (lookDir === "down") {
+    g.circle(6, 3 + bodyBob, 1).fill(0x0f172a);
+    g.circle(10, 3 + bodyBob, 1).fill(0x0f172a);
+  } else if (lookDir !== "up") {
+    g.circle(lookDir === "left" ? 5 : 10, 3 + bodyBob, 1).fill(0x0f172a);
   }
-
-  const loaded = await Assets.load(metadata.spriteUrl);
-  const sourceTexture = loaded?.texture ? loaded.texture : loaded;
-  const baseTexture = sourceTexture?.baseTexture || sourceTexture;
-  if (!baseTexture) {
-    return null;
-  }
-
-  const frameWidth = metadata.frameWidth || 24;
-  const frameHeight = metadata.frameHeight || 32;
-  const columns = Math.max(1, Math.floor(baseTexture.width / frameWidth));
-  const rows = Math.max(1, Math.floor(baseTexture.height / frameHeight));
-  const maxFrames = columns * rows;
-
-  const toTextures = (indices) =>
-    indices
-      .map((index) => (index >= 0 && index < maxFrames ? index : null))
-      .filter((index) => index !== null)
-      .map((index) => {
-        const x = (index % columns) * frameWidth;
-        const y = Math.floor(index / columns) * frameHeight;
-        return new Texture({
-          source: baseTexture,
-          frame: new Rectangle(x, y, frameWidth, frameHeight),
-        });
-      });
-
-  return {
-    idle: toTextures(metadata.animations?.idle || [0]),
-    walk: toTextures(metadata.animations?.walk || [0, 1, 2, 3]),
-    think: toTextures(metadata.animations?.think || [4, 5, 6, 7]),
-    choose: toTextures(metadata.animations?.choose || [8, 9, 10, 11]),
-  };
+  return g;
 }
 
-export async function buildSpriteAnimations(app, metadata, fallbackColor) {
-  const fromSheet = await createFromSheet(metadata).catch(() => null);
-  if (
-    fromSheet &&
-    fromSheet.idle.length > 0 &&
-    fromSheet.walk.length > 0 &&
-    fromSheet.think.length > 0
-  ) {
-    return fromSheet;
+function darken(hex, amount) {
+  const num = typeof hex === "string" ? Number.parseInt(hex.replace("#", ""), 16) : hex;
+  const r = Math.max(0, ((num >> 16) & 0xff) - amount);
+  const gVal = Math.max(0, ((num >> 8) & 0xff) - amount);
+  const b = Math.max(0, (num & 0xff) - amount);
+  return (r << 16) + (gVal << 8) + b;
+}
+
+function lighten(hex, amount) {
+  return darken(hex, -amount);
+}
+
+const CLOTHED_FRAME_H = 24;
+
+/**
+ * Generate procedural animations. When clothed=true, uses red shirt / brown pants / hair.
+ */
+export function createProceduralAnimations(app, clothed = false, baseColor = 0x4488cc) {
+  if (!app) {
+    return {
+      idleDown: [],
+      idleSide: [],
+      idleUp: [],
+      walkDown: [],
+      walkSide: [],
+      walkUp: [],
+    };
   }
-  return createProceduralAnimations(
-    app,
-    metadata?.style?.baseColor || fallbackColor || "#4b5563",
-  );
+
+  const draw = clothed
+    ? (opts) => drawClothedCharacterFrame(opts)
+    : (opts) => drawCharacterFrame(baseColor, opts);
+  const frameH = clothed ? CLOTHED_FRAME_H : 16;
+
+  const genTexture = (graphics) =>
+    app.renderer.generateTexture({
+      target: graphics,
+      frame: new Rectangle(0, 0, 16, frameH),
+      resolution: 2,
+    });
+
+  const idleDown = [
+    genTexture(draw({ bodyBob: 0, lookDir: "down" })),
+    genTexture(draw({ bodyBob: -1, lookDir: "down" })),
+  ];
+  const idleSide = [
+    genTexture(draw({ bodyBob: 0, lookDir: "right" })),
+    genTexture(draw({ bodyBob: -1, lookDir: "right" })),
+  ];
+  const idleUp = [
+    genTexture(draw({ bodyBob: 0, lookDir: "up" })),
+    genTexture(draw({ bodyBob: -1, lookDir: "up" })),
+  ];
+  const walkDown = [
+    genTexture(draw({ legOffset: -2, bodyBob: 0, lookDir: "down" })),
+    genTexture(draw({ legOffset: 2, bodyBob: -1, lookDir: "down" })),
+    genTexture(draw({ legOffset: -2, bodyBob: 0, lookDir: "down" })),
+    genTexture(draw({ legOffset: 2, bodyBob: 1, lookDir: "down" })),
+  ];
+  const walkSide = [
+    genTexture(draw({ legOffset: -2, bodyBob: 0, armSide: "left", lookDir: "right" })),
+    genTexture(draw({ legOffset: 2, bodyBob: -1, armSide: "right", lookDir: "right" })),
+    genTexture(draw({ legOffset: -2, bodyBob: 0, armSide: "left", lookDir: "right" })),
+    genTexture(draw({ legOffset: 2, bodyBob: 1, armSide: "right", lookDir: "right" })),
+  ];
+  const walkUp = [
+    genTexture(draw({ legOffset: -2, bodyBob: 0, lookDir: "up" })),
+    genTexture(draw({ legOffset: 2, bodyBob: -1, lookDir: "up" })),
+    genTexture(draw({ legOffset: -2, bodyBob: 0, lookDir: "up" })),
+    genTexture(draw({ legOffset: 2, bodyBob: 1, lookDir: "up" })),
+  ];
+
+  return { idleDown, idleSide, idleUp, walkDown, walkSide, walkUp };
 }

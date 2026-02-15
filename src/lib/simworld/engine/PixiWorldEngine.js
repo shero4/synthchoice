@@ -6,84 +6,60 @@ import {
   Text,
 } from "pixi.js";
 
-import { buildSpriteAnimations } from "./spriteFactory";
+import { loadAllAssets } from "./assetLoader";
+import { createBuilding } from "./buildingFactory";
+import { buildSpriteAnimations, createProceduralAnimations } from "./spriteFactory";
+import { TileMapRenderer } from "./tileMap";
 
-function makeBlock(width, height, fill, alpha = 1) {
-  const shape = new Graphics();
-  shape.rect(0, 0, width, height).fill({ color: fill, alpha });
-  return shape;
-}
+// ---------------------------------------------------------------------------
+// Direction helpers
+// ---------------------------------------------------------------------------
 
-function makeStationDot(station, colors) {
-  const marker = new Container();
-
-  const base = new Graphics();
-  base.circle(0, 0, 26).fill(colors.stationBase).stroke({
-    color: colors.stationBorder,
-    width: 2,
-  });
-  marker.addChild(base);
-
-  const dot = new Graphics();
-  dot.circle(0, 0, 10).fill(colors.stationDot);
-  marker.addChild(dot);
-
-  const label = new Text({
-    text: station.id,
-    style: {
-      fill: colors.stationLabel,
-      fontSize: 16,
-      fontWeight: "700",
-      fontFamily: "monospace",
-    },
-  });
-  label.anchor.set(0.5);
-  marker.addChild(label);
-
-  return marker;
-}
-
-function getMovementDirection(previousX, nextX) {
-  if (nextX < previousX) {
-    return "left";
+/**
+ * Given a movement vector, return the dominant direction.
+ * Returns "down" | "up" | "left" | "right"
+ */
+function getDirection(dx, dy) {
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx > 0 ? "right" : "left";
   }
-  if (nextX > previousX) {
-    return "right";
-  }
-  return null;
+  return dy > 0 ? "down" : "up";
 }
 
-const STATION_COLORS = {
-  stationBase: "#ffffff",
-  stationBorder: "#334155",
-  stationDot: "#0ea5e9",
-  stationLabel: "#0f172a",
-};
-
+// ---------------------------------------------------------------------------
+// PixiWorldEngine — v2 with tile-based rendering
+// ---------------------------------------------------------------------------
 export class PixiWorldEngine {
   constructor(config) {
     this.config = config;
     this.ready = false;
     this.app = null;
     this.containerElement = null;
+    this.assets = null;
+
     this.layers = {
-      map: null,
-      roads: null,
-      props: null,
+      ground: null,
+      paths: null,
+      decorations: null,
+      buildings: null,
       characters: null,
       ui: null,
     };
+
     this.characters = new Map();
     this.bubbles = new Map();
     this.stations = new Map();
+
     this.tick = this.tick.bind(this);
   }
 
+  // -----------------------------------------------------------------------
+  // Lifecycle
+  // -----------------------------------------------------------------------
+
   async init(containerElement) {
     if (!containerElement) {
-      throw new Error(
-        "A container element is required to initialize PixiWorldEngine.",
-      );
+      throw new Error("A container element is required to initialize PixiWorldEngine.");
     }
     this.containerElement = containerElement;
 
@@ -91,161 +67,230 @@ export class PixiWorldEngine {
       this.destroy();
     }
 
+    // Start with empty assets so world can render immediately.
+    this.assets = {};
+
+    // Create PixiJS application
     this.app = new Application();
     await this.app.init({
       width: this.config.width,
       height: this.config.height,
       background: this.config.background,
       antialias: false,
-      resolution:
-        typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
+      resolution: typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
       autoDensity: true,
     });
 
     this.containerElement.innerHTML = "";
+    this.app.canvas.style.width = "100%";
+    this.app.canvas.style.height = "100%";
+    this.app.canvas.style.display = "block";
+    this.app.canvas.style.imageRendering = "pixelated";
     this.containerElement.appendChild(this.app.canvas);
 
-    this.layers.map = new Container();
-    this.layers.roads = new Container();
-    this.layers.props = new Container();
+    // Create render layers (bottom → top)
+    this.layers.ground = new Container();
+    this.layers.paths = new Container();
+    this.layers.decorations = new Container();
+    this.layers.buildings = new Container();
     this.layers.characters = new Container();
     this.layers.ui = new Container();
+
+    this.layers.decorations.sortableChildren = true;
+    this.layers.buildings.sortableChildren = true;
     this.layers.characters.sortableChildren = true;
     this.layers.ui.sortableChildren = true;
 
     this.app.stage.addChild(
-      this.layers.map,
-      this.layers.roads,
-      this.layers.props,
+      this.layers.ground,
+      this.layers.paths,
+      this.layers.decorations,
+      this.layers.buildings,
       this.layers.characters,
       this.layers.ui,
     );
 
-    this._drawDistrict();
+    // Render world immediately (no asset dependency).
+    this._renderWorld();
+
+    // Load assets in the background for buildings/sprites.
+    loadAllAssets()
+      .then((assets) => {
+        this.assets = assets || {};
+      })
+      .catch((error) => {
+        console.warn("Asset loading failed; continuing with procedural fallback.", error);
+      });
+
+    // Start tick loop
     this.app.ticker.add(this.tick);
     this.ready = true;
   }
 
-  _drawDistrict() {
-    const { width, height } = this.config;
-    const colors = {
-      grass: "#dff4df",
-      lane: "#d0d8de",
-      laneEdge: "#a8b2bb",
-      plaza: "#f7f3e8",
-      building: "#c7d0dd",
-      roof: "#93a0af",
-    };
+  _renderWorld() {
+    const tileMap = new TileMapRenderer();
+    const { ground, decorations } = tileMap.render();
 
-    const park = makeBlock(width, height, colors.grass);
-    this.layers.map.addChild(park);
+    this.layers.ground.addChild(ground);
+    this.layers.decorations.addChild(decorations);
 
-    const mainRoad = makeBlock(width, 92, colors.lane);
-    mainRoad.x = 0;
-    mainRoad.y = 290;
-    this.layers.roads.addChild(mainRoad);
-
-    const mainRoadEdgeTop = makeBlock(width, 3, colors.laneEdge, 0.8);
-    mainRoadEdgeTop.y = 290;
-    this.layers.roads.addChild(mainRoadEdgeTop);
-
-    const mainRoadEdgeBottom = makeBlock(width, 3, colors.laneEdge, 0.8);
-    mainRoadEdgeBottom.y = 379;
-    this.layers.roads.addChild(mainRoadEdgeBottom);
-
-    const westRoad = makeBlock(120, height, colors.lane);
-    westRoad.x = 560;
-    this.layers.roads.addChild(westRoad);
-
-    const choicePlaza = makeBlock(370, 285, colors.plaza);
-    choicePlaza.x = 690;
-    choicePlaza.y = 170;
-    this.layers.props.addChild(choicePlaza);
-
-    const buildingWest = makeBlock(360, 160, colors.building);
-    buildingWest.x = 120;
-    buildingWest.y = 90;
-    const roofWest = makeBlock(360, 24, colors.roof);
-    roofWest.x = 120;
-    roofWest.y = 90;
-
-    const buildingSouth = makeBlock(360, 140, colors.building);
-    buildingSouth.x = 120;
-    buildingSouth.y = 560;
-    const roofSouth = makeBlock(360, 24, colors.roof);
-    roofSouth.x = 120;
-    roofSouth.y = 560;
-
-    this.layers.props.addChild(
-      buildingWest,
-      roofWest,
-      buildingSouth,
-      roofSouth,
-    );
+    // Draw a fountain/spawn marker at center
+    this._drawFountain();
   }
 
-  // --- Dynamic station (option) management ---
+  _drawFountain() {
+    const { width, height } = this.config;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const fountain = new Container();
+
+    // Stone base plate
+    const plate = new Graphics();
+    plate.ellipse(0, 8, 42, 18).fill({ color: 0x8c9aa2, alpha: 0.35 });
+    fountain.addChild(plate);
+
+    // Outer basin ring
+    const basinOuter = new Graphics();
+    basinOuter.circle(0, 0, 30).fill({ color: 0xaab4ba, alpha: 0.95 });
+    basinOuter.circle(0, 0, 30).stroke({ color: 0x6d7a82, width: 3, alpha: 0.9 });
+    fountain.addChild(basinOuter);
+
+    // Inner stone lip
+    const basinLip = new Graphics();
+    basinLip.circle(0, 0, 24).fill({ color: 0xc1c9ce, alpha: 0.95 });
+    basinLip.circle(0, 0, 24).stroke({ color: 0x8b979e, width: 2, alpha: 0.85 });
+    fountain.addChild(basinLip);
+
+    // Water bowl
+    const water = new Graphics();
+    water.circle(0, 0, 19).fill({ color: 0x5eaedf, alpha: 0.9 });
+    water.circle(0, 0, 15).fill({ color: 0x8fd3f3, alpha: 0.55 });
+    fountain.addChild(water);
+
+    // Ripple rings
+    const ripple = new Graphics();
+    ripple.ellipse(-4, 2, 8, 3.5).stroke({ color: 0xe8fbff, width: 1.5, alpha: 0.7 });
+    ripple.ellipse(6, -3, 6, 2.7).stroke({ color: 0xe8fbff, width: 1.5, alpha: 0.6 });
+    fountain.addChild(ripple);
+
+    // Center statue / spout
+    const statue = new Graphics();
+    statue.roundRect(-4, -16, 8, 13, 2).fill({ color: 0x97a4ac, alpha: 0.95 });
+    statue.circle(0, -18, 4.5).fill({ color: 0xa8b4bb, alpha: 0.95 });
+    statue.circle(0, -25, 2.2).fill({ color: 0xc6e8ff, alpha: 0.85 });
+    statue.circle(0, -20, 1.4).fill({ color: 0xe6f7ff, alpha: 0.9 });
+    fountain.addChild(statue);
+
+    fountain.x = cx;
+    fountain.y = cy;
+    fountain.zIndex = cy;
+
+    this.layers.decorations.addChild(fountain);
+  }
+
+  // -----------------------------------------------------------------------
+  // Station / building management
+  // -----------------------------------------------------------------------
 
   addStation(station) {
-    if (!this.ready || !station?.id) {
-      return;
-    }
+    if (!this.ready || !station?.id) return;
 
-    // Remove existing station with same id first
     this.removeStation(station.id);
 
-    const markerContainer = new Container();
+    const tilesetTexture = this.assets?.tileset;
 
-    const marker = makeStationDot(station, STATION_COLORS);
-    marker.x = station.x;
-    marker.y = station.y;
-    marker.zIndex = station.y;
-    markerContainer.addChild(marker);
+    if (station.shopType && tilesetTexture) {
+      // Create a proper building from the tileset
+      const building = createBuilding(
+        station.shopType,
+        { x: station.x, y: station.y },
+        station.label || station.id,
+        tilesetTexture,
+        this.assets.tilesetHouses,
+      );
+      this.layers.buildings.addChild(building);
+      this.stations.set(station.id, { container: building, station });
+    } else {
+      // Fallback: simple marker (same as v1 but styled)
+      const marker = this._createFallbackMarker(station);
+      this.layers.buildings.addChild(marker);
+      this.stations.set(station.id, { container: marker, station });
+    }
+  }
 
-    const text = new Text({
+  _createFallbackMarker(station) {
+    const container = new Container();
+
+    const bg = new Graphics();
+    bg.roundRect(-30, -25, 60, 50, 6)
+      .fill({ color: 0xffffff, alpha: 0.9 })
+      .stroke({ color: 0x334155, width: 2 });
+    container.addChild(bg);
+
+    const dot = new Graphics();
+    dot.circle(0, -5, 8).fill(0x0ea5e9);
+    container.addChild(dot);
+
+    const label = new Text({
       text: station.label || station.id,
       style: {
         fill: "#0f172a",
-        fontSize: 12,
-        fontWeight: "600",
+        fontSize: 10,
+        fontWeight: "700",
         fontFamily: "monospace",
       },
     });
-    text.anchor.set(0.5, 0);
-    text.x = station.x;
-    text.y = station.y + 32;
-    markerContainer.addChild(text);
+    label.anchor.set(0.5, 0);
+    label.y = 8;
+    container.addChild(label);
 
-    this.layers.props.addChild(markerContainer);
-    this.stations.set(station.id, {
-      container: markerContainer,
-      station,
-    });
+    container.x = station.x;
+    container.y = station.y;
+    container.zIndex = station.y;
+    return container;
   }
 
   removeStation(stationId) {
     const entry = this.stations.get(stationId);
-    if (!entry) {
-      return;
-    }
+    if (!entry) return;
     entry.container.destroy({ children: true });
     this.stations.delete(stationId);
   }
 
-  // --- Character management ---
+  // -----------------------------------------------------------------------
+  // Character management
+  // -----------------------------------------------------------------------
 
-  async addCharacter(character, spriteMetadata) {
+  async addCharacter(character) {
     if (!this.ready) {
       throw new Error("Engine not ready.");
     }
 
-    const animations = await buildSpriteAnimations(
-      this.app,
-      spriteMetadata,
-      character.color || "#64748b",
-    );
+    const animations = buildSpriteAnimations(this.assets, this.app);
 
-    const sprite = new AnimatedSprite(animations.idle);
+    // Determine which textures to use initially (idle facing down)
+    const initialTextures =
+      animations.idleDown?.length > 0
+        ? animations.idleDown
+        : animations.walkDown?.length > 0
+          ? animations.walkDown
+          : null;
+
+    if (!initialTextures || initialTextures.length === 0) {
+      // Try procedural fallback (clothed)
+      const fallback = createProceduralAnimations(this.app, true, character.color || 0x4488cc);
+      if (fallback.idleDown.length > 0) {
+        Object.assign(animations, fallback);
+      } else {
+        console.warn("No sprite textures available for character", character.id);
+        return;
+      }
+    }
+
+    const sprite = new AnimatedSprite(
+      animations.idleDown.length > 0 ? animations.idleDown : animations.walkDown,
+    );
     sprite.anchor.set(0.5, 1);
     sprite.animationSpeed = 0.12;
     sprite.play();
@@ -253,18 +298,19 @@ export class PixiWorldEngine {
     sprite.y = character.position.y;
     sprite.zIndex = sprite.y;
 
+    // Name label
     const label = new Text({
       text: character.name || character.persona,
       style: {
         fill: "#0f172a",
         fontFamily: "monospace",
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: "700",
       },
     });
     label.anchor.set(0.5, 1);
     label.x = sprite.x;
-    label.y = sprite.y - 36;
+    label.y = sprite.y - sprite.height - 4;
     label.zIndex = sprite.zIndex + 1;
 
     this.layers.characters.addChild(sprite);
@@ -275,15 +321,13 @@ export class PixiWorldEngine {
       label,
       animations,
       state: "idle",
-      facing: "right",
+      facing: "down",
     });
   }
 
   removeCharacter(characterId) {
     const entry = this.characters.get(characterId);
-    if (!entry) {
-      return;
-    }
+    if (!entry) return;
 
     this.clearSpeechBubble(characterId);
     entry.sprite.destroy();
@@ -291,39 +335,71 @@ export class PixiWorldEngine {
     this.characters.delete(characterId);
   }
 
-  setCharacterState(characterId, state) {
+  /**
+   * Set character animation state and direction.
+   * @param {string} characterId
+   * @param {string} state — "idle" | "walking_to_station" | "walking_to_choice" | etc.
+   * @param {string} [direction] — "down" | "up" | "left" | "right"
+   */
+  setCharacterState(characterId, state, direction) {
     const entry = this.characters.get(characterId);
-    if (!entry || entry.state === state) {
-      return;
-    }
+    if (!entry) return;
+
+    const dir = direction || entry.facing;
+    const isWalking = state.includes("walking") || state.includes("returning");
+    const prevState = entry.state;
+    const prevFacing = entry.facing;
 
     entry.state = state;
-    const textures =
-      state === "thinking"
-        ? entry.animations.think
-        : state === "choosing"
-          ? entry.animations.choose
-          : state.includes("walking")
-            ? entry.animations.walk
-            : entry.animations.idle;
+    entry.facing = dir;
 
-    if (textures.length > 0) {
-      entry.sprite.textures = textures;
-      entry.sprite.animationSpeed = state.includes("walking") ? 0.2 : 0.12;
-      entry.sprite.play();
+    // Determine textures based on state + direction
+    let textures;
+    if (isWalking) {
+      if (dir === "up") textures = entry.animations.walkUp;
+      else if (dir === "left" || dir === "right") textures = entry.animations.walkSide;
+      else textures = entry.animations.walkDown;
+    } else {
+      if (dir === "up") textures = entry.animations.idleUp;
+      else if (dir === "left" || dir === "right") textures = entry.animations.idleSide;
+      else textures = entry.animations.idleDown;
+    }
+
+    // Handle left/right mirroring (side sheet is right-facing)
+    entry.sprite.scale.x = dir === "left" ? -1 : 1;
+
+    if (textures && textures.length > 0) {
+      const stateKey = `${state}-${dir}`;
+      const prevKey = `${prevState}-${prevFacing}`;
+      if (stateKey !== prevKey) {
+        entry.sprite.textures = textures;
+        entry.sprite.animationSpeed = isWalking ? 0.18 : 0.1;
+        entry.sprite.play();
+      }
     }
   }
 
-  setCharacterPosition(characterId, position) {
+  /**
+   * Update character position and auto-detect direction.
+   */
+  setCharacterPosition(characterId, position, prevPosition) {
     const entry = this.characters.get(characterId);
-    if (!entry) {
-      return;
-    }
+    if (!entry) return;
 
-    const direction = getMovementDirection(entry.sprite.x, position.x);
-    if (direction) {
-      entry.facing = direction;
-      entry.sprite.scale.x = direction === "left" ? -1 : 1;
+    // Auto-detect direction from movement delta
+    if (prevPosition) {
+      const dx = position.x - prevPosition.x;
+      const dy = position.y - prevPosition.y;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        const dir = getDirection(dx, dy);
+        if (dir !== entry.facing) {
+          entry.facing = dir;
+          // Update mirroring
+          entry.sprite.scale.x = dir === "left" ? -1 : 1;
+          // Update animation textures for new direction
+          this.setCharacterState(characterId, entry.state, dir);
+        }
+      }
     }
 
     entry.sprite.x = position.x;
@@ -331,15 +407,17 @@ export class PixiWorldEngine {
     entry.sprite.zIndex = position.y;
 
     entry.label.x = position.x;
-    entry.label.y = position.y - 36;
+    entry.label.y = position.y - entry.sprite.height - 4;
     entry.label.zIndex = position.y + 1;
   }
 
+  // -----------------------------------------------------------------------
+  // Speech bubbles
+  // -----------------------------------------------------------------------
+
   showSpeechBubble(characterId, message, durationMs = 1800) {
     const entry = this.characters.get(characterId);
-    if (!entry) {
-      return;
-    }
+    if (!entry) return;
 
     this.clearSpeechBubble(characterId);
 
@@ -349,18 +427,18 @@ export class PixiWorldEngine {
       style: {
         fill: "#0f172a",
         fontFamily: "monospace",
-        fontSize: 12,
-        lineHeight: 16,
+        fontSize: 11,
+        lineHeight: 14,
         wordWrap: true,
-        wordWrapWidth: 220,
+        wordWrapWidth: 200,
       },
     });
     text.anchor.set(0.5, 1);
 
     const paddingX = 10;
     const paddingY = 8;
-    const bubbleWidth = Math.max(80, text.width + paddingX * 2);
-    const bubbleHeight = Math.max(34, text.height + paddingY * 2);
+    const bubbleWidth = Math.max(70, text.width + paddingX * 2);
+    const bubbleHeight = Math.max(30, text.height + paddingY * 2);
 
     const bg = new Graphics();
     bg.roundRect(-bubbleWidth / 2, -bubbleHeight, bubbleWidth, bubbleHeight, 8)
@@ -370,9 +448,9 @@ export class PixiWorldEngine {
     const tail = new Graphics();
     tail
       .poly([
-        { x: -6, y: 0 },
-        { x: 0, y: 8 },
-        { x: 6, y: 0 },
+        { x: -5, y: 0 },
+        { x: 0, y: 7 },
+        { x: 5, y: 0 },
       ])
       .fill(0xffffff)
       .stroke({ color: 0x334155, width: 1 });
@@ -389,19 +467,21 @@ export class PixiWorldEngine {
       container: bubble,
       startAt: performance.now(),
       endAt: performance.now() + durationMs,
-      fadeMs: 220,
+      fadeMs: 200,
     });
   }
 
   clearSpeechBubble(characterId) {
     const bubbleEntry = this.bubbles.get(characterId);
-    if (!bubbleEntry) {
-      return;
-    }
+    if (!bubbleEntry) return;
 
     bubbleEntry.container.destroy({ children: true });
     this.bubbles.delete(characterId);
   }
+
+  // -----------------------------------------------------------------------
+  // Tick loop
+  // -----------------------------------------------------------------------
 
   tick() {
     for (const [characterId, entry] of this.characters.entries()) {
@@ -409,12 +489,10 @@ export class PixiWorldEngine {
       entry.label.zIndex = entry.sprite.y + 1;
 
       const bubble = this.bubbles.get(characterId);
-      if (!bubble) {
-        continue;
-      }
+      if (!bubble) continue;
 
       bubble.container.x = entry.sprite.x;
-      bubble.container.y = entry.sprite.y - 44;
+      bubble.container.y = entry.sprite.y - entry.sprite.height - 12;
       bubble.container.zIndex = entry.sprite.y + 10;
 
       const now = performance.now();
@@ -422,15 +500,9 @@ export class PixiWorldEngine {
       const fadeOutStart = bubble.endAt - bubble.fadeMs;
 
       if (now <= fadeInEnd) {
-        bubble.container.alpha = Math.min(
-          1,
-          (now - bubble.startAt) / bubble.fadeMs,
-        );
+        bubble.container.alpha = Math.min(1, (now - bubble.startAt) / bubble.fadeMs);
       } else if (now >= fadeOutStart) {
-        bubble.container.alpha = Math.max(
-          0,
-          (bubble.endAt - now) / bubble.fadeMs,
-        );
+        bubble.container.alpha = Math.max(0, (bubble.endAt - now) / bubble.fadeMs);
       } else {
         bubble.container.alpha = 1;
       }
@@ -441,6 +513,10 @@ export class PixiWorldEngine {
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Cleanup
+  // -----------------------------------------------------------------------
+
   destroy() {
     if (this.app) {
       this.app.ticker.remove(this.tick);
@@ -449,7 +525,6 @@ export class PixiWorldEngine {
     for (const characterId of this.characters.keys()) {
       this.removeCharacter(characterId);
     }
-
     for (const stationId of this.stations.keys()) {
       this.removeStation(stationId);
     }
@@ -472,9 +547,10 @@ export class PixiWorldEngine {
     this.bubbles.clear();
     this.stations.clear();
     this.layers = {
-      map: null,
-      roads: null,
-      props: null,
+      ground: null,
+      paths: null,
+      decorations: null,
+      buildings: null,
       characters: null,
       ui: null,
     };

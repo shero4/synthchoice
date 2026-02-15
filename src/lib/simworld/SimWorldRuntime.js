@@ -1,24 +1,17 @@
 import {
   CHARACTER_STATES,
   DEFAULT_SIM_OPTIONS,
+  SHOP_POSITIONS,
   SIM_STATUS,
+  SPAWN_POINT,
   WORLD_CONFIG,
 } from "./config";
 import { createCharacterEntity } from "./domain/characterEntity";
 import { PixiWorldEngine } from "./engine/PixiWorldEngine";
+import { getPath, getPathToNearestExit } from "./engine/pathSystem";
 import { createId } from "./services/id";
-import { fetchSpriteMetadata } from "./services/spriteAdapter";
 import { TimingController } from "./services/timingController";
 import { configureSimStore, simActions } from "./store/simStore";
-
-/** Default positions for auto-laid-out options in the choice plaza */
-const OPTION_LAYOUT_SLOTS = [
-  { x: 760, y: 250 },
-  { x: 920, y: 250 },
-  { x: 840, y: 360 },
-  { x: 760, y: 430 },
-  { x: 920, y: 430 },
-];
 
 export class SimWorldRuntime {
   constructor(options = {}) {
@@ -29,13 +22,16 @@ export class SimWorldRuntime {
     this.engine = new PixiWorldEngine(WORLD_CONFIG);
     this.destroyed = false;
 
-    /** @type {Map<string, {id: string, label: string, x: number, y: number}>} */
+    /** @type {Map<string, {id: string, label: string, shopType?: string, x: number, y: number, slotIndex: number}>} */
     this.optionsMap = new Map();
 
     /** @type {Set<function>} */
     this.actionListeners = new Set();
 
-    /** Tracks the next auto-layout slot index */
+    /** Tracks which shop positions are occupied (index → optionId) */
+    this._slotAssignments = new Map();
+
+    /** Next slot index to try */
     this._nextSlot = 0;
   }
 
@@ -59,7 +55,6 @@ export class SimWorldRuntime {
   // Event / Action system
   // ----------------------------------------------------------------
 
-  /** Subscribe to action events. Returns unsubscribe function. */
   onAction(callback) {
     this.actionListeners.add(callback);
     return () => this.actionListeners.delete(callback);
@@ -85,39 +80,72 @@ export class SimWorldRuntime {
   }
 
   // ----------------------------------------------------------------
-  // Options management
+  // Options / shop management
   // ----------------------------------------------------------------
 
-  /** Add an option (station marker) to the world. */
+  /**
+   * Add an option (shop building) to the world.
+   * @param {object} optionConfig - { id?, label, shopType? }
+   */
   addOption(optionConfig) {
     const id = optionConfig.id || createId("opt");
-    const slot = optionConfig.position || OPTION_LAYOUT_SLOTS[this._nextSlot % OPTION_LAYOUT_SLOTS.length];
-    this._nextSlot++;
+
+    // Find next available slot
+    let slotIndex = -1;
+    for (let i = 0; i < SHOP_POSITIONS.length; i++) {
+      const candidate = (this._nextSlot + i) % SHOP_POSITIONS.length;
+      if (!this._slotAssignments.has(candidate)) {
+        slotIndex = candidate;
+        break;
+      }
+    }
+
+    if (slotIndex === -1) {
+      // All 8 slots full — wrap around
+      slotIndex = this._nextSlot % SHOP_POSITIONS.length;
+    }
+
+    const slot = SHOP_POSITIONS[slotIndex];
+    this._nextSlot = slotIndex + 1;
 
     const option = {
       id,
       label: optionConfig.label || id,
+      shopType: optionConfig.shopType || null,
       x: slot.x,
       y: slot.y,
+      slotIndex,
     };
 
     this.optionsMap.set(id, option);
-    this.engine.addStation(option);
-    this._emitAction(null, "option.added", { optionId: id, label: option.label });
+    this._slotAssignments.set(slotIndex, id);
+
+    this.engine.addStation({
+      id,
+      label: option.label,
+      shopType: option.shopType,
+      x: slot.x,
+      y: slot.y,
+    });
+
+    this._emitAction(null, "option.added", {
+      optionId: id,
+      label: option.label,
+      shopType: option.shopType,
+    });
     return option;
   }
 
-  /** Remove an option from the world. */
   removeOption(optionId) {
-    if (!this.optionsMap.has(optionId)) {
-      return;
-    }
+    const option = this.optionsMap.get(optionId);
+    if (!option) return;
+
+    this._slotAssignments.delete(option.slotIndex);
     this.optionsMap.delete(optionId);
     this.engine.removeStation(optionId);
     this._emitAction(null, "option.removed", { optionId });
   }
 
-  /** Get all current options. */
   getOptions() {
     return Array.from(this.optionsMap.values());
   }
@@ -126,15 +154,8 @@ export class SimWorldRuntime {
   // Sprite management
   // ----------------------------------------------------------------
 
-  /**
-   * Add a sprite character to the world.
-   * @param {object} personality - { id?, name, age?, bio?, persona?, color? }
-   * @returns {Promise<object>} the created character entity
-   */
   async addSprite(personality = {}) {
     const characterCount = Object.keys(this.store.getState().characters).length;
-    const spawnPoint =
-      WORLD_CONFIG.spawnPoints[characterCount % WORLD_CONFIG.spawnPoints.length];
 
     const character = createCharacterEntity(
       {
@@ -146,15 +167,10 @@ export class SimWorldRuntime {
         segment: personality.segment || "default",
         color: personality.color || this._pickColor(characterCount),
       },
-      spawnPoint,
+      SPAWN_POINT,
     );
 
-    const spriteMetadata = await fetchSpriteMetadata({
-      persona: character.persona,
-      color: character.color,
-    });
-
-    await this.engine.addCharacter(character, spriteMetadata);
+    await this.engine.addCharacter(character);
     this.store.dispatch(simActions.upsertCharacter(character));
     this._emitAction(character.id, "sprite.added", {
       name: character.name,
@@ -164,13 +180,10 @@ export class SimWorldRuntime {
     return character;
   }
 
-  /** Remove a sprite from the world. */
   removeSprite(spriteId) {
     this.engine.removeCharacter(spriteId);
-    // Mark character as removed in store
     const characters = { ...this.store.getState().characters };
     delete characters[spriteId];
-    // Dispatch a fresh state (we can't delete via upsert, so hydrate)
     this.store.dispatch(
       simActions.hydrateSimulation({
         ...this.store.getState(),
@@ -180,7 +193,6 @@ export class SimWorldRuntime {
     this._emitAction(spriteId, "sprite.removed", { spriteId });
   }
 
-  /** Get all current sprites. */
   getSprites() {
     return Object.values(this.store.getState().characters);
   }
@@ -189,11 +201,6 @@ export class SimWorldRuntime {
   // Actions
   // ----------------------------------------------------------------
 
-  /**
-   * Make a sprite say something (speech bubble).
-   * @param {string} spriteId
-   * @param {string} message
-   */
   async say(spriteId, message) {
     const text = message || "...";
     this.engine.showSpeechBubble(spriteId, text, WORLD_CONFIG.bubbleDurationMs.reason);
@@ -202,9 +209,7 @@ export class SimWorldRuntime {
   }
 
   /**
-   * Move a sprite to an option's position.
-   * @param {string} spriteId
-   * @param {string} optionId
+   * Move a sprite to an option's position using waypoint pathfinding.
    */
   async moveTo(spriteId, optionId) {
     const option = this.optionsMap.get(optionId);
@@ -217,29 +222,24 @@ export class SimWorldRuntime {
       throw new Error(`Sprite "${spriteId}" not found.`);
     }
 
-    // Set walking animation
+    // Set walking state
     this.engine.setCharacterState(spriteId, CHARACTER_STATES.WALKING_TO_STATION);
     this._emitAction(spriteId, "move", { optionId, optionLabel: option.label });
 
+    // Get waypoint path from current position to shop
     const from = character.position;
-    const to = { x: option.x, y: option.y + 26 };
+    const to = { x: option.x, y: option.y + 20 };
+    const waypoints = getPath(from, to);
 
-    await this.timing.tween({
-      from,
-      to,
-      durationMs: WORLD_CONFIG.moveDurationMs.toStation,
-      onUpdate: (position) => {
-        this._updatePosition(spriteId, position);
-      },
-    });
+    // Walk along each waypoint segment
+    await this._walkAlongPath(spriteId, from, waypoints, CHARACTER_STATES.WALKING_TO_STATION);
 
-    // Return to idle
-    this.engine.setCharacterState(spriteId, CHARACTER_STATES.IDLE);
+    // Arrive — return to idle
+    this.engine.setCharacterState(spriteId, CHARACTER_STATES.IDLE, "down");
   }
 
   /**
-   * Exit a sprite from the world (walk off bottom, then remove).
-   * @param {string} spriteId
+   * Exit a sprite from the world — walk to nearest exit, then remove.
    */
   async exit(spriteId) {
     const character = this.store.getState().characters[spriteId];
@@ -251,16 +251,9 @@ export class SimWorldRuntime {
     this._emitAction(spriteId, "exit", { name: character.name });
 
     const from = character.position;
-    const to = { x: from.x, y: WORLD_CONFIG.height + 40 };
+    const waypoints = getPathToNearestExit(from);
 
-    await this.timing.tween({
-      from,
-      to,
-      durationMs: WORLD_CONFIG.moveDurationMs.toSpawn,
-      onUpdate: (position) => {
-        this._updatePosition(spriteId, position);
-      },
-    });
+    await this._walkAlongPath(spriteId, from, waypoints, CHARACTER_STATES.WALKING_TO_CHOICE);
 
     this.removeSprite(spriteId);
   }
@@ -269,14 +262,56 @@ export class SimWorldRuntime {
   // Internal helpers
   // ----------------------------------------------------------------
 
-  _updatePosition(spriteId, position) {
-    const current = this.store.getState().characters[spriteId];
-    if (!current) {
-      return;
+  /**
+   * Walk a sprite along a sequence of waypoints.
+   * For each segment, tween from current to next waypoint and
+   * update animation direction based on movement.
+   */
+  async _walkAlongPath(spriteId, startPos, waypoints, walkState) {
+    let currentPos = { ...startPos };
+
+    for (const wp of waypoints) {
+      const dx = wp.x - currentPos.x;
+      const dy = wp.y - currentPos.y;
+      const segDist = Math.hypot(dx, dy);
+
+      if (segDist < 1) continue;
+
+      // Determine direction for this segment
+      let dir;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        dir = dx > 0 ? "right" : "left";
+      } else {
+        dir = dy > 0 ? "down" : "up";
+      }
+
+      this.engine.setCharacterState(spriteId, walkState, dir);
+
+      // Duration proportional to distance (pixels/sec ≈ 120)
+      const segDuration = Math.max(300, (segDist / 120) * 1000);
+      const from = { ...currentPos };
+
+      await this.timing.tween({
+        from,
+        to: wp,
+        durationMs: segDuration,
+        onUpdate: (position) => {
+          this._updatePosition(spriteId, position, from);
+          from.x = position.x;
+          from.y = position.y;
+        },
+      });
+
+      currentPos = { ...wp };
     }
+  }
+
+  _updatePosition(spriteId, position, prevPosition) {
+    const current = this.store.getState().characters[spriteId];
+    if (!current) return;
     const updated = { ...current, position };
     this.store.dispatch(simActions.upsertCharacter(updated));
-    this.engine.setCharacterPosition(spriteId, position);
+    this.engine.setCharacterPosition(spriteId, position, prevPosition);
   }
 
   _pickColor(index) {

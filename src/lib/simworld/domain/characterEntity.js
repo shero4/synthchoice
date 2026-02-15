@@ -1,9 +1,9 @@
-import { CHARACTER_STATES, WORLD_CONFIG } from "../config";
+import { CHARACTER_STATES, SPAWN_POINT } from "../config";
 import { createId } from "../services/id";
 
 export function createCharacterEntity(
   config = {},
-  fallbackSpawn = WORLD_CONFIG.spawnPoints[0],
+  fallbackSpawn = SPAWN_POINT,
 ) {
   return {
     id: config.id || createId("agent"),

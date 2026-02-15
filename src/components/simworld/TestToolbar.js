@@ -19,8 +19,20 @@ const PERSONA_OPTIONS = [
   { value: "Cautious", label: "Cautious" },
 ];
 
+const SHOP_TYPE_OPTIONS = [
+  { value: "cafe", label: "☕ Cafe" },
+  { value: "library", label: "📚 Library" },
+  { value: "gym", label: "💪 Gym" },
+  { value: "gallery", label: "🎨 Art Gallery" },
+  { value: "office", label: "💼 Office" },
+  { value: "tech", label: "💻 Tech Shop" },
+  { value: "meditation", label: "🧘 Meditation" },
+  { value: "music", label: "🎵 Music Hall" },
+];
+
 export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
   const [optionLabel, setOptionLabel] = useState("");
+  const [shopType, setShopType] = useState("cafe");
   const [spriteName, setSpriteName] = useState("");
   const [spriteAge, setSpriteAge] = useState("");
   const [spriteBio, setSpriteBio] = useState("");
@@ -39,7 +51,7 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
       message.warning("Enter an option label");
       return;
     }
-    runtime.addOption({ label: optionLabel.trim() });
+    runtime.addOption({ label: optionLabel.trim(), shopType });
     setOptionLabel("");
     onUpdate?.();
   };
@@ -162,24 +174,33 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
           <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>
             Add Option
           </div>
-          <Space.Compact>
-            <Input
-              placeholder="Option label"
-              value={optionLabel}
-              onChange={(e) => setOptionLabel(e.target.value)}
-              onPressEnter={handleAddOption}
-              style={{ width: 130 }}
+          <Space size={4}>
+            <Select
+              value={shopType}
+              onChange={setShopType}
+              options={SHOP_TYPE_OPTIONS}
+              style={{ width: 140 }}
               size="small"
             />
-            <Tooltip title="Add option to world">
-              <Button
-                icon={<PlusOutlined />}
-                onClick={handleAddOption}
+            <Space.Compact>
+              <Input
+                placeholder="Label"
+                value={optionLabel}
+                onChange={(e) => setOptionLabel(e.target.value)}
+                onPressEnter={handleAddOption}
+                style={{ width: 120 }}
                 size="small"
-                type="primary"
               />
-            </Tooltip>
-          </Space.Compact>
+              <Tooltip title="Add shop to world">
+                <Button
+                  icon={<PlusOutlined />}
+                  onClick={handleAddOption}
+                  size="small"
+                  type="primary"
+                />
+              </Tooltip>
+            </Space.Compact>
+          </Space>
         </div>
 
         <Divider type="vertical" style={{ height: 48 }} />
@@ -218,7 +239,7 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
               style={{ width: 120 }}
               size="small"
             />
-            <Tooltip title="Spawn sprite">
+            <Tooltip title="Spawn sprite at center">
               <Button
                 icon={<UserAddOutlined />}
                 onClick={handleAddSprite}
