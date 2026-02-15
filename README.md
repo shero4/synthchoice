@@ -20,7 +20,7 @@
 
 ### Video walkthrough
 
-<video src="public/readme/demo.mp4" controls width="100%"></video>
+[![Watch the video](public/readme/1.png)](public/readme/demo.mp4)
 
 ### Screenshots
 
