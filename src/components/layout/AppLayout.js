@@ -1,36 +1,58 @@
 "use client";
 
-import { Layout } from "antd";
+import { Typography, Space } from "antd";
+import { usePathname } from "next/navigation";
 import { AppHeader } from "./AppHeader";
 
-const { Content, Footer } = Layout;
+const { Text } = Typography;
 
 /**
  * Main application layout wrapper
  */
 export function AppLayout({ children }) {
+  const pathname = usePathname();
+  const isHomePage = pathname === "/";
+
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <AppHeader />
-      <Content
+    <div style={{ minHeight: "100vh", background: isHomePage ? "transparent" : "#f5f5f5" }}>
+      <AppHeader transparent={isHomePage} />
+      <main
         style={{
-          padding: "24px 48px",
-          background: "#f5f5f5",
+          paddingTop: isHomePage ? 0 : 24,
+          paddingBottom: isHomePage ? 0 : 24,
+          paddingLeft: isHomePage ? 0 : 48,
+          paddingRight: isHomePage ? 0 : 48,
         }}
       >
         <div
           style={{
-            maxWidth: 1400,
+            maxWidth: isHomePage ? "none" : 1400,
             margin: "0 auto",
             width: "100%",
           }}
         >
           {children}
         </div>
-      </Content>
-      <Footer style={{ textAlign: "center", background: "#f5f5f5" }}>
-        SynthChoice - Simulate minds, Predict decisions.
-      </Footer>
-    </Layout>
+      </main>
+      {!isHomePage && (
+        <footer
+          style={{
+            textAlign: "center",
+            background: "#0a0a1a",
+            color: "rgba(255,255,255,0.65)",
+            padding: "32px 48px",
+          }}
+        >
+          <Space direction="vertical" size={8}>
+            <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>
+              SynthChoice
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
+              Simulate minds. Predict decisions.
+            </Text>
+          </Space>
+        </footer>
+      )}
+    </div>
   );
 }

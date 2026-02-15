@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import {
   Card,
@@ -11,8 +11,6 @@ import {
   Space,
   Row,
   Col,
-  Statistic,
-  Descriptions,
   message,
 } from "antd";
 import {
@@ -36,7 +34,7 @@ import {
 } from "@/lib/firebase/db";
 import { computeResults } from "@/lib/domain/aggregate";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /**
  * Results Page - display run results and analysis
@@ -52,39 +50,8 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
 
-  // Load data
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [exp, alts, runData, cachedResults] = await Promise.all([
-          getExperiment(experimentId),
-          getAlternatives(experimentId),
-          getRun(experimentId, runId),
-          getResultsSummary(experimentId, runId),
-        ]);
-
-        setExperiment(exp);
-        setAlternatives(alts);
-        setRun(runData);
-
-        if (cachedResults) {
-          setResults(cachedResults);
-        } else if (runData?.status === "complete") {
-          // Compute results if not cached
-          await computeAndSaveResults(exp, alts, runData);
-        }
-      } catch (error) {
-        console.error("Error loading results:", error);
-        message.error("Failed to load results");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [experimentId, runId]);
-
   // Compute and save results
-  const computeAndSaveResults = async (exp, alts, runData) => {
+  const computeAndSaveResults = useCallback(async (exp, alts) => {
     setComputing(true);
     try {
       const responses = await getResponses(experimentId, runId);
@@ -106,7 +73,38 @@ export default function ResultsPage() {
     } finally {
       setComputing(false);
     }
-  };
+  }, [experimentId, runId]);
+
+  // Load data
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [exp, alts, runData, cachedResults] = await Promise.all([
+          getExperiment(experimentId),
+          getAlternatives(experimentId),
+          getRun(experimentId, runId),
+          getResultsSummary(experimentId, runId),
+        ]);
+
+        setExperiment(exp);
+        setAlternatives(alts);
+        setRun(runData);
+
+        if (cachedResults) {
+          setResults(cachedResults);
+        } else if (runData?.status === "complete") {
+          // Compute results if not cached
+          await computeAndSaveResults(exp, alts);
+        }
+      } catch (error) {
+        console.error("Error loading results:", error);
+        message.error("Failed to load results");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [experimentId, runId, computeAndSaveResults]);
 
   // Handle recompute
   const handleRecompute = () => {
@@ -123,21 +121,26 @@ export default function ResultsPage() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: "center", padding: 48 }}>
-        <Spin size="large" />
+      <div className="page-container">
+        <div style={{ textAlign: "center", padding: 96 }}>
+          <Spin size="large" />
+          <p style={{ marginTop: 16, color: '#64748b' }}>Loading results...</p>
+        </div>
       </div>
     );
   }
 
   if (!experiment || !run) {
     return (
-      <Card>
-        <Empty description="Results not found">
-          <Link href="/">
-            <Button type="primary">Go Home</Button>
-          </Link>
-        </Empty>
-      </Card>
+      <div className="page-container">
+        <Card style={{ borderRadius: 16 }}>
+          <Empty description="Results not found">
+            <Link href="/">
+              <Button type="primary" style={{ borderRadius: 8 }}>Go Home</Button>
+            </Link>
+          </Empty>
+        </Card>
+      </div>
     );
   }
 
@@ -145,68 +148,88 @@ export default function ResultsPage() {
   const segments = experiment.agentPlan?.segments || [];
 
   return (
-    <div>
+    <div className="page-container">
       {/* Header */}
-      <Card style={{ marginBottom: 24 }}>
-        <Space style={{ width: "100%", justifyContent: "space-between" }}>
-          <Space>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <Space style={{ marginBottom: 8 }}>
             <Link href={`/experiments/${experimentId}`}>
-              <Button icon={<ArrowLeftOutlined />}>Back to Experiment</Button>
+              <Button 
+                icon={<ArrowLeftOutlined />}
+                type="text"
+                style={{ color: '#64748b' }}
+              >
+                Back to Experiment
+              </Button>
             </Link>
-            <Title level={3} style={{ margin: 0 }}>
-              Results: {experiment.name || "Untitled"}
-            </Title>
           </Space>
-          <Space>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRecompute}
-              loading={computing}
-            >
-              Recompute
-            </Button>
-            <Button icon={<DownloadOutlined />} onClick={handleExport}>
-              Export
-            </Button>
-          </Space>
+          <h1 className="page-header-title">
+            Results: <span className="gradient-text">{experiment.name || "Untitled"}</span>
+          </h1>
+          <p className="page-header-subtitle">
+            Run ID: {runId?.slice(0, 8)}... • Status: {run.status}
+          </p>
+        </div>
+        <Space>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={handleRecompute}
+            loading={computing}
+            style={{ borderRadius: 8 }}
+          >
+            Recompute
+          </Button>
+          <Button 
+            icon={<DownloadOutlined />} 
+            onClick={handleExport}
+            style={{ borderRadius: 8 }}
+          >
+            Export
+          </Button>
         </Space>
-      </Card>
+      </div>
 
-      {/* Run info */}
-      <Card style={{ marginBottom: 24 }}>
-        <Descriptions column={4}>
-          <Descriptions.Item label="Run ID">{runId}</Descriptions.Item>
-          <Descriptions.Item label="Status">{run.status}</Descriptions.Item>
-          <Descriptions.Item label="Tasks Completed">
-            {run.progress?.completedTasks || 0} /{" "}
-            {run.progress?.totalTasks || 0}
-          </Descriptions.Item>
-          <Descriptions.Item label="Computed">
-            {results?.computedAt
-              ? new Date(results.computedAt.seconds * 1000).toLocaleString()
-              : "Not computed"}
-          </Descriptions.Item>
-        </Descriptions>
+      {/* Run Progress Card */}
+      <Card 
+        style={{ marginBottom: 24, borderRadius: 14, border: '1px solid #e2e8f0' }}
+        styles={{ body: { padding: '16px 24px' } }}
+      >
+        <Row gutter={32} align="middle">
+          <Col>
+            <Text type="secondary" style={{ fontSize: 13 }}>Tasks Completed</Text>
+            <div style={{ fontWeight: 600, fontSize: 18, color: '#0f172a' }}>
+              {run.progress?.completedTasks || 0} / {run.progress?.totalTasks || 0}
+            </div>
+          </Col>
+          <Col>
+            <Text type="secondary" style={{ fontSize: 13 }}>Computed At</Text>
+            <div style={{ fontWeight: 500, color: '#0f172a' }}>
+              {results?.computedAt
+                ? new Date(results.computedAt.seconds * 1000).toLocaleString()
+                : "Not computed"}
+            </div>
+          </Col>
+        </Row>
       </Card>
 
       {computing ? (
-        <Card>
-          <div style={{ textAlign: "center", padding: 48 }}>
+        <Card style={{ borderRadius: 14 }}>
+          <div style={{ textAlign: "center", padding: 64 }}>
             <Spin size="large" />
-            <Text style={{ display: "block", marginTop: 16 }}>
+            <Text style={{ display: "block", marginTop: 16, color: '#64748b' }}>
               Computing results...
             </Text>
           </div>
         </Card>
       ) : !results ? (
-        <Card>
+        <Card style={{ borderRadius: 14 }}>
           <Empty description="No results available">
             {run.status !== "complete" ? (
               <Text type="secondary">
                 Run is not complete. Complete the run to see results.
               </Text>
             ) : (
-              <Button type="primary" onClick={handleRecompute}>
+              <Button type="primary" onClick={handleRecompute} style={{ borderRadius: 8 }}>
                 Compute Results
               </Button>
             )}
@@ -215,29 +238,38 @@ export default function ResultsPage() {
       ) : (
         <>
           {/* Summary stats */}
-          <Row gutter={24} style={{ marginBottom: 24 }}>
+          <Row gutter={16} style={{ marginBottom: 24 }}>
             <Col span={6}>
-              <Card>
-                <Statistic
-                  title="Total Responses"
-                  value={run.progress?.completedTasks || 0}
-                />
-              </Card>
+              <div className="stat-card">
+                <div className="stat-card-value" style={{ color: '#3b82f6' }}>
+                  {run.progress?.completedTasks || 0}
+                </div>
+                <div className="stat-card-label">Total Responses</div>
+              </div>
             </Col>
             <Col span={6}>
-              <Card>
-                <Statistic title="Alternatives" value={alternatives.length} />
-              </Card>
+              <div className="stat-card">
+                <div className="stat-card-value" style={{ color: '#8b5cf6' }}>
+                  {alternatives.length}
+                </div>
+                <div className="stat-card-label">Alternatives</div>
+              </div>
             </Col>
             <Col span={6}>
-              <Card>
-                <Statistic title="Segments" value={segments.length} />
-              </Card>
+              <div className="stat-card">
+                <div className="stat-card-value" style={{ color: '#10b981' }}>
+                  {segments.length}
+                </div>
+                <div className="stat-card-label">Segments</div>
+              </div>
             </Col>
             <Col span={6}>
-              <Card>
-                <Statistic title="Features" value={features.length} />
-              </Card>
+              <div className="stat-card">
+                <div className="stat-card-value" style={{ color: '#f59e0b' }}>
+                  {features.length}
+                </div>
+                <div className="stat-card-label">Features</div>
+              </div>
             </Col>
           </Row>
 

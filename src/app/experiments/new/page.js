@@ -249,7 +249,8 @@ export default function NewExperimentPage() {
           />
         );
 
-      case 4: // Review
+      case 4: {
+        // Review
         const reviewAgentConfig = draft.agentConfig || {};
         const reviewTotalAgents = calculateTotalAgents(reviewAgentConfig);
         const reviewNumCombinations =
@@ -258,12 +259,12 @@ export default function NewExperimentPage() {
           (reviewAgentConfig.selectedLocations?.length || 0);
 
         return (
-          <Card title="Review & Save">
+          <Card title="Review & Save" style={{ borderRadius: 14 }}>
             <Result
-              icon={<CheckCircleOutlined />}
+              icon={<CheckCircleOutlined style={{ color: '#10b981' }} />}
               title="Ready to create experiment"
               subTitle={
-                <Space direction="vertical">
+                <Space direction="vertical" style={{ textAlign: 'left' }}>
                   <span>
                     <strong>Name:</strong> {draft.name || "Untitled"}
                   </span>
@@ -287,6 +288,13 @@ export default function NewExperimentPage() {
                   icon={<SaveOutlined />}
                   onClick={handleSave}
                   loading={saving}
+                  style={{
+                    borderRadius: 10,
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                    border: 'none',
+                    height: 48,
+                    padding: '0 32px',
+                  }}
                 >
                   Create Experiment
                 </Button>
@@ -294,6 +302,7 @@ export default function NewExperimentPage() {
             />
           </Card>
         );
+      }
 
       default:
         return null;
@@ -301,24 +310,48 @@ export default function NewExperimentPage() {
   };
 
   return (
-    <div>
-      <Card style={{ marginBottom: 24 }}>
+    <div className="page-container">
+      {/* Page Header */}
+      <div className="page-header">
+        <h1 className="page-header-title">Create New Experiment</h1>
+        <p className="page-header-subtitle">Set up your choice-based experiment in a few steps</p>
+      </div>
+
+      {/* Steps Progress */}
+      <Card 
+        style={{ 
+          marginBottom: 24, 
+          borderRadius: 14,
+          border: '1px solid #e2e8f0',
+        }}
+        styles={{ body: { padding: '20px 24px' } }}
+      >
         <Steps
           current={currentStep}
           items={steps}
           size="small"
           onChange={(step) => dispatch(setCurrentStep(step))}
+          style={{ fontFamily: 'var(--font-sans)' }}
         />
       </Card>
 
       {renderStepContent()}
 
-      <Card style={{ marginTop: 24 }}>
+      {/* Navigation */}
+      <Card 
+        style={{ 
+          marginTop: 24, 
+          borderRadius: 14,
+          border: '1px solid #e2e8f0',
+        }}
+        styles={{ body: { padding: '16px 24px' } }}
+      >
         <Space style={{ width: "100%", justifyContent: "space-between" }}>
           <Button
             icon={<ArrowLeftOutlined />}
             onClick={() => dispatch(prevStep())}
             disabled={currentStep === 0}
+            style={{ borderRadius: 8 }}
           >
             Previous
           </Button>
@@ -327,8 +360,13 @@ export default function NewExperimentPage() {
               type="primary"
               icon={<ArrowRightOutlined />}
               onClick={() => dispatch(nextStep())}
+              style={{ 
+                borderRadius: 8,
+                background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                border: 'none',
+              }}
             >
-              Next
+              Next Step
             </Button>
           ) : null}
         </Space>

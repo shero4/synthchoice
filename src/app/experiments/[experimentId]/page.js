@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Card,
-  Descriptions,
   Button,
   Space,
   Tag,
@@ -14,7 +13,6 @@ import {
   Tabs,
   Empty,
   List,
-  Statistic,
   Row,
   Col,
   message,
@@ -34,7 +32,7 @@ import {
   deleteExperiment,
 } from "@/lib/firebase/db";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /**
  * Experiment Detail Page - view experiment overview
@@ -99,21 +97,26 @@ export default function ExperimentDetailPage() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: "center", padding: 48 }}>
-        <Spin size="large" />
+      <div className="page-container">
+        <div style={{ textAlign: "center", padding: 96 }}>
+          <Spin size="large" />
+          <p style={{ marginTop: 16, color: '#64748b' }}>Loading experiment...</p>
+        </div>
       </div>
     );
   }
 
   if (!experiment) {
     return (
-      <Card>
-        <Empty description="Experiment not found">
-          <Link href="/">
-            <Button type="primary">Go Home</Button>
-          </Link>
-        </Empty>
-      </Card>
+      <div className="page-container">
+        <Card style={{ borderRadius: 16 }}>
+          <Empty description="Experiment not found">
+            <Link href="/">
+              <Button type="primary" style={{ borderRadius: 8 }}>Go Home</Button>
+            </Link>
+          </Empty>
+        </Card>
+      </div>
     );
   }
 
@@ -264,63 +267,92 @@ export default function ExperimentDetailPage() {
   ];
 
   return (
-    <div>
+    <div className="page-container">
       {/* Header */}
-      <Card style={{ marginBottom: 24 }}>
-        <Space style={{ width: "100%", justifyContent: "space-between" }}>
-          <Space>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <Space style={{ marginBottom: 8 }}>
             <Link href="/">
-              <Button icon={<ArrowLeftOutlined />}>Back</Button>
+              <Button 
+                icon={<ArrowLeftOutlined />} 
+                type="text"
+                style={{ color: '#64748b' }}
+              >
+                Back
+              </Button>
             </Link>
-            <Title level={3} style={{ margin: 0 }}>
+          </Space>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h1 className="page-header-title">
               {experiment.name || "Untitled Experiment"}
-            </Title>
-            <Tag color={getStatusColor(experiment.status)}>
+            </h1>
+            <Tag 
+              color={getStatusColor(experiment.status)}
+              style={{ fontSize: 12, padding: '2px 10px' }}
+            >
               {experiment.status}
             </Tag>
-          </Space>
-          <Space>
-            <Link href={`/experiments/${experimentId}/edit`}>
-              <Button icon={<EditOutlined />}>
-                Edit
-              </Button>
-            </Link>
-            <Link href={`/experiments/${experimentId}/run`}>
-              <Button type="primary" icon={<PlayCircleOutlined />}>
-                Run Experiment
-              </Button>
-            </Link>
-            <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
-              Delete
+          </div>
+          {experiment.description && (
+            <p className="page-header-subtitle" style={{ marginTop: 8, maxWidth: 600 }}>
+              {experiment.description}
+            </p>
+          )}
+        </div>
+        <Space>
+          <Link href={`/experiments/${experimentId}/edit`}>
+            <Button icon={<EditOutlined />} style={{ borderRadius: 8 }}>
+              Edit
             </Button>
-          </Space>
+          </Link>
+          <Link href={`/experiments/${experimentId}/run`}>
+            <Button 
+              type="primary" 
+              icon={<PlayCircleOutlined />}
+              style={{ 
+                borderRadius: 8,
+                background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                border: 'none',
+              }}
+            >
+              Run Experiment
+            </Button>
+          </Link>
+          <Button 
+            danger 
+            icon={<DeleteOutlined />} 
+            onClick={handleDelete}
+            style={{ borderRadius: 8 }}
+          >
+            Delete
+          </Button>
         </Space>
-      </Card>
+      </div>
 
-      {/* Description */}
-      {experiment.description && (
-        <Card style={{ marginBottom: 24 }}>
-          <Text>{experiment.description}</Text>
-        </Card>
-      )}
-
-      {/* Configuration */}
-      <Card title="Configuration" style={{ marginBottom: 24 }}>
-        <Descriptions column={3}>
-          <Descriptions.Item label="Total Agents">
-            {experiment.agentPlan?.totalAgents || 0}
-          </Descriptions.Item>
-          <Descriptions.Item label="Segments">
-            {experiment.agentPlan?.segments?.length || 0}
-          </Descriptions.Item>
-          <Descriptions.Item label="Features">
-            {experiment.featureSchema?.features?.length || 0}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
+      {/* Stats Cards */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={8}>
+          <div className="stat-card">
+            <div className="stat-card-value">{experiment.agentPlan?.totalAgents || 0}</div>
+            <div className="stat-card-label">Total Agents</div>
+          </div>
+        </Col>
+        <Col span={8}>
+          <div className="stat-card">
+            <div className="stat-card-value">{experiment.agentPlan?.segments?.length || 0}</div>
+            <div className="stat-card-label">Segments</div>
+          </div>
+        </Col>
+        <Col span={8}>
+          <div className="stat-card">
+            <div className="stat-card-value">{experiment.featureSchema?.features?.length || 0}</div>
+            <div className="stat-card-label">Features</div>
+          </div>
+        </Col>
+      </Row>
 
       {/* Tabs */}
-      <Card>
+      <Card style={{ borderRadius: 16, border: '1px solid #e2e8f0' }}>
         <Tabs items={tabItems} />
       </Card>
     </div>
