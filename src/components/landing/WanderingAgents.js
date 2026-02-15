@@ -1,38 +1,37 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
-import { AnimatedSprite } from "./AnimatedSprite";
+import { ClothedSprite } from "./ClothedSprite";
 
-// Agent personas with different colors/appearances
+// Agent personas with different clothing colors
 const AGENT_PERSONAS = [
-  { id: 1, name: "Alex", color: "#f56a00", mbti: "INTJ" },
-  { id: 2, name: "Jordan", color: "#7265e6", mbti: "ENFP" },
-  { id: 3, name: "Sam", color: "#ffbf00", mbti: "ISTP" },
-  { id: 4, name: "Morgan", color: "#00a2ae", mbti: "ESFJ" },
-  { id: 5, name: "Casey", color: "#eb2f96", mbti: "INFP" },
-  { id: 6, name: "Riley", color: "#52c41a", mbti: "ENTJ" },
-  { id: 7, name: "Quinn", color: "#1890ff", mbti: "ISFJ" },
-  { id: 8, name: "Taylor", color: "#722ed1", mbti: "ENTP" },
+  { id: 1, name: "Dhruva", shirtColor: 0x3b82f6, pantsColor: 0x1e3a5f, hairColor: 0x1a1a1a },      // Blue
+  { id: 2, name: "Aditya", shirtColor: 0x8b5cf6, pantsColor: 0x4c1d95, hairColor: 0x2d1b0e },      // Purple
+  { id: 3, name: "Sitaraman", shirtColor: 0x10b981, pantsColor: 0x064e3b, hairColor: 0x1a1a1a },   // Green
+  { id: 4, name: "Priya", shirtColor: 0xf59e0b, pantsColor: 0x78350f, hairColor: 0x1a1a1a },       // Orange
+  { id: 5, name: "Jack", shirtColor: 0xec4899, pantsColor: 0x831843, hairColor: 0x2d1b0e },       // Pink
+  { id: 6, name: "Arjun", shirtColor: 0x14b8a6, pantsColor: 0x134e4a, hairColor: 0x1a1a1a },       // Teal
+  { id: 7, name: "Megan", shirtColor: 0x6366f1, pantsColor: 0x312e81, hairColor: 0x2d1b0e },       // Indigo
+  { id: 8, name: "Kathan", shirtColor: 0xef4444, pantsColor: 0x7f1d1d, hairColor: 0x1a1a1a },      // Red
 ];
 
-// Sprite configurations
-const SPRITES = {
-  idle_down: { src: "/sprites/char_idle_down.png", frameCount: 4 },
-  idle_side: { src: "/sprites/char_idle_side.png", frameCount: 4 },
-  idle_up: { src: "/sprites/char_idle_up.png", frameCount: 4 },
-  walk_down: { src: "/sprites/char_walk_down.png", frameCount: 6 },
-  walk_side: { src: "/sprites/char_walk_side.png", frameCount: 6 },
-  walk_up: { src: "/sprites/char_walk_up.png", frameCount: 6 },
-};
+// Convert hex number to CSS color string
+function hexToColorString(hex) {
+  return `#${hex.toString(16).padStart(6, "0")}`;
+}
 
 /**
  * Single wandering agent with AI-like movement
  */
-function WanderingAgent({ persona, bounds, scale = 2.5, initialIndex = 0, totalAgents = 1 }) {
-  const frameWidth = 32;
-  const frameHeight = 32;
+function WanderingAgent({ persona, bounds, scale = 2, initialIndex = 0, totalAgents = 1 }) {
+  // ClothedSprite dimensions: 16x24 base, scaled
+  const frameWidth = 16;
+  const frameHeight = 24;
   const agentWidth = frameWidth * scale;
   const agentHeight = frameHeight * scale;
+  
+  // Top padding to prevent name tags from being cut off
+  const topPadding = 30;
 
   // Movement state - distribute agents evenly across the center portion of the screen
   const [position, setPosition] = useState(() => {
@@ -44,7 +43,7 @@ function WanderingAgent({ persona, bounds, scale = 2.5, initialIndex = 0, totalA
     
     return {
       x: Math.max(0, Math.min(bounds.width - agentWidth, baseX)),
-      y: Math.random() * (bounds.height - agentHeight),
+      y: topPadding + Math.random() * (bounds.height - agentHeight - topPadding),
     };
   });
   const [velocity, setVelocity] = useState({ x: 0, y: 0 });
@@ -104,16 +103,16 @@ function WanderingAgent({ persona, bounds, scale = 2.5, initialIndex = 0, totalA
         let newX = prev.x + velocity.x * deltaTime;
         let newY = prev.y + velocity.y * deltaTime;
 
-        // Bounce off walls
+        // Bounce off walls (with top padding for name tags)
         if (newX < 0 || newX > bounds.width - agentWidth) {
           setVelocity((v) => ({ ...v, x: -v.x }));
           setFacingDirection((d) => (d === "left" ? "right" : d === "right" ? "left" : d));
           newX = Math.max(0, Math.min(bounds.width - agentWidth, newX));
         }
-        if (newY < 0 || newY > bounds.height - agentHeight) {
+        if (newY < topPadding || newY > bounds.height - agentHeight) {
           setVelocity((v) => ({ ...v, y: -v.y }));
           setFacingDirection((d) => (d === "up" ? "down" : d === "down" ? "up" : d));
-          newY = Math.max(0, Math.min(bounds.height - agentHeight, newY));
+          newY = Math.max(topPadding, Math.min(bounds.height - agentHeight, newY));
         }
 
         return { x: newX, y: newY };
@@ -126,16 +125,7 @@ function WanderingAgent({ persona, bounds, scale = 2.5, initialIndex = 0, totalA
     return () => cancelAnimationFrame(animationFrame);
   }, [state, velocity, bounds, agentWidth, agentHeight]);
 
-  // Get current sprite based on state and direction
-  const getCurrentSprite = () => {
-    const prefix = state === "walking" ? "walk" : "idle";
-    if (facingDirection === "up") return SPRITES[`${prefix}_up`];
-    if (facingDirection === "down") return SPRITES[`${prefix}_down`];
-    return SPRITES[`${prefix}_side`];
-  };
-
-  const sprite = getCurrentSprite();
-  const flipDirection = facingDirection === "left" ? "left" : "right";
+  const shirtColorStr = hexToColorString(persona.shirtColor);
 
   return (
     <div
@@ -175,40 +165,37 @@ function WanderingAgent({ persona, bounds, scale = 2.5, initialIndex = 0, totalA
         </div>
       )}
 
-      {/* Name tag */}
+      {/* Name tag with shirt color */}
       <div
         className="agent-nametag"
         style={{
           position: "absolute",
-          top: -18,
+          top: -20,
           left: "50%",
           transform: "translateX(-50%)",
-          background: "rgba(0,0,0,0.75)",
+          background: shirtColorStr,
           color: "#fff",
-          padding: "3px 8px",
-          borderRadius: 4,
+          padding: "3px 10px",
+          borderRadius: 10,
           fontSize: 10,
           fontWeight: 600,
           whiteSpace: "nowrap",
           fontFamily: "var(--font-sans)",
+          boxShadow: `0 2px 6px ${shirtColorStr}40`,
         }}
       >
         {persona.name}
       </div>
 
-      {/* Sprite */}
-      <div
-        style={{
-          filter: `drop-shadow(0 2px 2px rgba(0,0,0,0.3))`,
-        }}
-      >
-        <AnimatedSprite
-          src={sprite.src}
-          frameWidth={frameWidth}
-          frameHeight={frameHeight}
-          frameCount={sprite.frameCount}
+      {/* Clothed sprite */}
+      <div style={{ filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.3))" }}>
+        <ClothedSprite
+          shirtColor={persona.shirtColor}
+          pantsColor={persona.pantsColor}
+          hairColor={persona.hairColor}
+          animation={state}
+          direction={facingDirection}
           scale={scale}
-          direction={flipDirection}
           fps={state === "walking" ? 10 : 6}
         />
       </div>
@@ -300,7 +287,7 @@ export function WanderingAgents({ agentCount = 8, height = 300 }) {
             key={persona.id}
             persona={persona}
             bounds={bounds}
-            scale={2.5}
+            scale={2}
             initialIndex={index}
             totalAgents={agents.length}
           />
