@@ -13,9 +13,10 @@ export const Provider = Object.freeze({
 /** @type {Record<string, string>} Model ID -> Provider */
 export const MODEL_TO_PROVIDER = Object.freeze({
   [Models.GEMINI_2_FLASH_IMAGE]: Provider.GEMINI,
+  [Models.GEMINI_2_FLASH]: Provider.GEMINI,
 
   [Models.GEMINI_2_5_FLASH_IMAGE_PREVIEW]: Provider.OPENROUTER,
-  [Models.GEMINI_2_FLASH]: Provider.OPENROUTER,
+  [Models.GEMINI_2_FLASH_OPENROUTER]: Provider.OPENROUTER,
   [Models.CLAUDE_3_5_SONNET]: Provider.OPENROUTER,
   [Models.CLAUDE_3_OPUS]: Provider.OPENROUTER,
   [Models.GPT_4O]: Provider.OPENROUTER,

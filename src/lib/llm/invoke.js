@@ -86,12 +86,16 @@ async function callOpenRouter(apiKey, modelId, messages, options) {
     };
   });
 
+  // Only include image modalities for image-capable models
+  const isImageModel = modelId.includes("image");
   const body = {
     model: modelId,
     messages: normalizedMessages,
     stream: false,
-    modalities: ["image", "text"],
   };
+  if (isImageModel) {
+    body.modalities = ["image", "text"];
+  }
   if (jsonMode) body.response_format = { type: "json_object" };
   if (maxTokens > 0) body.max_tokens = maxTokens;
 
@@ -143,7 +147,11 @@ async function callOpenRouter(apiKey, modelId, messages, options) {
 async function callGemini(apiKey, modelId, messages, options) {
   const { jsonMode = false, maxTokens = 0 } = options;
 
-  // Convert OpenRouter-style messages to Gemini format
+  // Extract system instruction from system messages
+  const systemMessages = messages.filter((m) => m.role === "system");
+  const systemInstruction = systemMessages.map((m) => m.content).join("\n\n");
+
+  // Convert OpenRouter-style messages to Gemini format (only user messages)
   const parts = [];
   for (const msg of messages) {
     if (msg.role !== "user") continue;
@@ -159,11 +167,24 @@ async function callGemini(apiKey, modelId, messages, options) {
     }
   }
 
-  const generationConfig = {
-    responseModalities: ["Text", "Image"],
-  };
+  // Only include responseModalities for image generation models
+  const isImageModel = modelId.includes("image");
+  const generationConfig = {};
+  if (isImageModel) {
+    generationConfig.responseModalities = ["Text", "Image"];
+  }
   if (jsonMode) generationConfig.responseMimeType = "application/json";
   if (maxTokens > 0) generationConfig.maxOutputTokens = maxTokens;
+
+  const requestBody = {
+    contents: [{ role: "user", parts }],
+    generationConfig,
+  };
+  
+  // Add system instruction if present
+  if (systemInstruction) {
+    requestBody.systemInstruction = { parts: [{ text: systemInstruction }] };
+  }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`;
   const res = await fetch(url, {
@@ -172,10 +193,7 @@ async function callGemini(apiKey, modelId, messages, options) {
       "Content-Type": "application/json",
       "x-goog-api-key": apiKey,
     },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts }],
-      generationConfig,
-    }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 

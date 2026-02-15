@@ -2,87 +2,127 @@
 
 import { useState } from "react";
 import { Card, Input, Button, Space, Typography, Alert } from "antd";
-import { ImportOutlined, ClearOutlined } from "@ant-design/icons";
+import { ThunderboltOutlined, ClearOutlined } from "@ant-design/icons";
+import { parseAlternatives } from "@/app/experiments/new/actions";
 
 const { TextArea } = Input;
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 /**
- * Alternatives Input - raw text/JSON input for alternatives
+ * Alternatives Input - raw text/JSON input for alternatives with AI parsing
  * 
  * Props:
  * - value: string - current raw input
  * - onChange: (value: string) => void - callback when input changes
- * - onNormalize: () => void - callback to trigger normalization
+ * - features: Feature[] - the feature schema to parse against
+ * - onAlternativesParsed: (alternatives: Alternative[]) => void - callback when alternatives are parsed
  */
-export function AlternativesInput({ value = "", onChange, onNormalize }) {
-  const [inputMode, setInputMode] = useState("text"); // text | json
+export function AlternativesInput({ value = "", onChange, features = [], onAlternativesParsed }) {
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState(null);
 
-  const placeholderText = `Enter your alternatives here, one per line or as JSON.
+  // Handle AI parsing
+  const handleAIParse = async () => {
+    if (!value.trim()) return;
+    
+    setParsing(true);
+    setParseError(null);
+    
+    try {
+      const result = await parseAlternatives(value, features);
+      
+      if (result.error) {
+        setParseError(result.error);
+      } else if (result.alternatives) {
+        onAlternativesParsed(result.alternatives);
+        onChange(""); // Clear input after successful parse
+      }
+    } catch (err) {
+      setParseError(err.message || "Failed to parse alternatives");
+    } finally {
+      setParsing(false);
+    }
+  };
 
-Example (text format):
-Plan A: $499/month, 12 months warranty, includes API access
-Plan B: $299/month, 6 months warranty, no API access
-Plan C: $699/month, 24 months warranty, API + premium support
+  const placeholderText = `Paste your alternatives data here in any format.
 
-Example (JSON format):
+Example (markdown table):
+### MacBook Pro 14"
+- **price:** 2499
+- **weight:** 1.6
+- **repairability:** Impossible
+- **flex_factor:** Coffee Shop Cred
+
+### ThinkPad X1 Carbon
+- **price:** 1899
+- **weight:** 1.12
+- **repairability:** Hard
+- **flex_factor:** Corporate Stealth
+
+Example (plain text):
+Option A: price $499, color Red, has warranty
+Option B: price $299, color Blue, no warranty
+
+Example (JSON):
 [
-  { "name": "Plan A", "price": 499, "warranty": "12m", "hasApi": true },
-  { "name": "Plan B", "price": 299, "warranty": "6m", "hasApi": false }
+  { "name": "Plan A", "price": 499, "color": "Red", "has_warranty": true },
+  { "name": "Plan B", "price": 299, "color": "Blue", "has_warranty": false }
 ]`;
 
+  const hasFeatures = features.length > 0;
+
   return (
-    <Card
-      title="Alternatives Input"
-      extra={
-        <Space>
-          <Button
-            type={inputMode === "text" ? "primary" : "default"}
-            size="small"
-            onClick={() => setInputMode("text")}
-          >
-            Text
-          </Button>
-          <Button
-            type={inputMode === "json" ? "primary" : "default"}
-            size="small"
-            onClick={() => setInputMode("json")}
-          >
-            JSON
-          </Button>
-        </Space>
-      }
-    >
-      <Space orientation="vertical" style={{ width: "100%" }} size="middle">
+    <Card title="Alternatives Input">
+      <Space direction="vertical" style={{ width: "100%" }} size="middle">
         <Alert
           type="info"
           showIcon
-          message="Paste or type your alternatives"
+          message="Paste your alternatives data"
           description={
             <Text type="secondary">
-              {inputMode === "text"
-                ? "Enter each alternative on a new line. Include feature values in any format."
-                : "Enter a JSON array of objects with name and feature properties."}
+              Paste alternatives in any format (markdown, JSON, plain text). 
+              AI will map the values to your feature schema.
             </Text>
           }
         />
+
+        {!hasFeatures && (
+          <Alert
+            type="warning"
+            showIcon
+            message="Define features first"
+            description="You need to define a feature schema before parsing alternatives."
+          />
+        )}
 
         <TextArea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholderText}
-          rows={10}
+          rows={12}
           style={{ fontFamily: "monospace" }}
+          disabled={!hasFeatures}
         />
+
+        {parseError && (
+          <Alert 
+            type="error" 
+            message={parseError} 
+            showIcon 
+            closable 
+            onClose={() => setParseError(null)} 
+          />
+        )}
 
         <Space>
           <Button
             type="primary"
-            icon={<ImportOutlined />}
-            onClick={onNormalize}
-            disabled={!value.trim()}
+            icon={<ThunderboltOutlined />}
+            onClick={handleAIParse}
+            loading={parsing}
+            disabled={!value.trim() || !hasFeatures}
           >
-            Normalize to Table
+            Parse with AI
           </Button>
           <Button
             icon={<ClearOutlined />}
@@ -93,10 +133,11 @@ Example (JSON format):
           </Button>
         </Space>
 
-        <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }}>
-          {/* TODO: Add LLM normalization option with BYO API key */}
-          Normalization will parse your input and map values to the defined feature schema.
-        </Paragraph>
+        {hasFeatures && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Parsing against {features.length} feature{features.length !== 1 ? "s" : ""}: {features.map(f => f.label || f.key).join(", ")}
+          </Text>
+        )}
       </Space>
     </Card>
   );

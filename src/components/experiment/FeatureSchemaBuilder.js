@@ -13,16 +13,22 @@ import {
   Tag,
   Popconfirm,
   Typography,
+  Alert,
+  Collapse,
 } from "antd";
 import {
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
   SaveOutlined,
+  ThunderboltOutlined,
+  ClearOutlined,
 } from "@ant-design/icons";
 import { createDefaultFeature } from "@/models/firestore";
+import { parseFeatureSchema } from "@/app/experiments/new/actions";
 
 const { Text } = Typography;
+const { TextArea } = Input;
 
 /**
  * Feature Schema Builder - define features for alternatives
@@ -35,6 +41,32 @@ export function FeatureSchemaBuilder({ features = [], onChange }) {
   const [form] = Form.useForm();
   const [editingKey, setEditingKey] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [rawSchemaInput, setRawSchemaInput] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState(null);
+
+  // Handle AI parsing of feature schema
+  const handleAIParse = async () => {
+    if (!rawSchemaInput.trim()) return;
+    
+    setParsing(true);
+    setParseError(null);
+    
+    try {
+      const result = await parseFeatureSchema(rawSchemaInput);
+      
+      if (result.error) {
+        setParseError(result.error);
+      } else if (result.features) {
+        onChange(result.features);
+        setRawSchemaInput("");
+      }
+    } catch (err) {
+      setParseError(err.message || "Failed to parse schema");
+    } finally {
+      setParsing(false);
+    }
+  };
 
   // Handle adding a new feature
   const handleAdd = () => {
@@ -155,21 +187,47 @@ export function FeatureSchemaBuilder({ features = [], onChange }) {
       title: "Details",
       dataIndex: "details",
       render: (_, record) => {
+        const currentType = form.getFieldValue("type") || record.type;
+        
         if (isEditing(record)) {
-          return (
-            <Space wrap>
-              <Form.Item name="unit" style={{ margin: 0, minWidth: 80 }}>
-                <Input placeholder="Unit" />
+          // Show different inputs based on type
+          if (currentType === "continuous") {
+            return (
+              <Space wrap>
+                <Form.Item name="unit" style={{ margin: 0, minWidth: 80 }}>
+                  <Input placeholder="Unit" />
+                </Form.Item>
+                <Form.Item name="min" style={{ margin: 0, width: 80 }}>
+                  <InputNumber placeholder="Min" />
+                </Form.Item>
+                <Form.Item name="max" style={{ margin: 0, width: 80 }}>
+                  <InputNumber placeholder="Max" />
+                </Form.Item>
+              </Space>
+            );
+          }
+          if (currentType === "categorical") {
+            return (
+              <Form.Item 
+                name="categories" 
+                style={{ margin: 0, minWidth: 200 }}
+                getValueFromEvent={(val) => val}
+                getValueProps={(val) => ({ value: val || [] })}
+              >
+                <Select
+                  mode="tags"
+                  placeholder="Enter categories (press Enter after each)"
+                  style={{ width: "100%" }}
+                  tokenSeparators={[","]}
+                />
               </Form.Item>
-              <Form.Item name="min" style={{ margin: 0, width: 80 }}>
-                <InputNumber placeholder="Min" />
-              </Form.Item>
-              <Form.Item name="max" style={{ margin: 0, width: 80 }}>
-                <InputNumber placeholder="Max" />
-              </Form.Item>
-            </Space>
-          );
+            );
+          }
+          // Binary - no extra details needed
+          return <Text type="secondary">Yes/No values</Text>;
         }
+        
+        // Display mode
         if (record.type === "continuous") {
           return (
             <Text type="secondary">
@@ -184,6 +242,9 @@ export function FeatureSchemaBuilder({ features = [], onChange }) {
           return record.categories.map((cat) => (
             <Tag key={cat}>{cat}</Tag>
           ));
+        }
+        if (record.type === "binary") {
+          return <Text type="secondary">Yes/No</Text>;
         }
         return <Text type="secondary">-</Text>;
       },
@@ -229,32 +290,110 @@ export function FeatureSchemaBuilder({ features = [], onChange }) {
     },
   ];
 
+  const placeholderText = `Paste your feature schema here. Examples:
+
+Markdown table:
+| Key | Label | Type | Details |
+|-----|-------|------|---------|
+| price | Price | continuous | Min: 100, Max: 1000, Unit: USD |
+| color | Color | categorical | "Red", "Blue", "Green" |
+| has_warranty | Has Warranty | binary | Yes/No |
+
+Plain text:
+- price: numeric, 100-1000 USD
+- color: options are Red, Blue, Green
+- has_warranty: yes/no`;
+
   return (
-    <Card
-      title="Feature Schema"
-      extra={
-        <Button
-          type="dashed"
-          icon={<PlusOutlined />}
-          onClick={handleAdd}
-          disabled={editingKey !== ""}
-        >
-          Add Feature
-        </Button>
-      }
-    >
-      <Form form={form} component={false}>
-        <Table
-          dataSource={features}
-          columns={columns}
-          rowKey="key"
-          pagination={false}
-          size="small"
-          locale={{
-            emptyText: "No features defined. Add features to describe your alternatives.",
-          }}
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
+      {/* AI Parse Section */}
+      <Card size="small">
+        <Collapse
+          ghost
+          defaultActiveKey={features.length === 0 ? ["ai-parse"] : []}
+          items={[
+            {
+              key: "ai-parse",
+              label: (
+                <Space>
+                  <ThunderboltOutlined />
+                  <Text strong>Parse with AI</Text>
+                  <Text type="secondary">(paste schema definition)</Text>
+                </Space>
+              ),
+              children: (
+                <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    title="Paste your feature schema in any format"
+                    description="Supports markdown tables, plain text lists, JSON, or any structured format describing your features."
+                  />
+                  
+                  <TextArea
+                    value={rawSchemaInput}
+                    onChange={(e) => setRawSchemaInput(e.target.value)}
+                    placeholder={placeholderText}
+                    rows={8}
+                    style={{ fontFamily: "monospace" }}
+                  />
+                  
+                  {parseError && (
+                    <Alert type="error" title={parseError} showIcon closable onClose={() => setParseError(null)} />
+                  )}
+                  
+                  <Space>
+                    <Button
+                      type="primary"
+                      icon={<ThunderboltOutlined />}
+                      onClick={handleAIParse}
+                      loading={parsing}
+                      disabled={!rawSchemaInput.trim()}
+                    >
+                      Parse with AI
+                    </Button>
+                    <Button
+                      icon={<ClearOutlined />}
+                      onClick={() => setRawSchemaInput("")}
+                      disabled={!rawSchemaInput}
+                    >
+                      Clear
+                    </Button>
+                  </Space>
+                </Space>
+              ),
+            },
+          ]}
         />
-      </Form>
-    </Card>
+      </Card>
+
+      {/* Feature Table */}
+      <Card
+        title="Feature Schema"
+        extra={
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={handleAdd}
+            disabled={editingKey !== ""}
+          >
+            Add Feature
+          </Button>
+        }
+      >
+        <Form form={form} component={false}>
+          <Table
+            dataSource={features}
+            columns={columns}
+            rowKey="key"
+            pagination={false}
+            size="small"
+            locale={{
+              emptyText: "No features defined. Use AI parsing above or add features manually.",
+            }}
+          />
+        </Form>
+      </Card>
+    </Space>
   );
 }

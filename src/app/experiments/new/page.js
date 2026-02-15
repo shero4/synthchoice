@@ -86,20 +86,13 @@ export default function NewExperimentPage() {
 
   // Step definitions
   const steps = [
-    { title: "Basics", description: "Name & description" },
-    { title: "Features", description: "Define schema" },
-    { title: "Alternatives", description: "Add options" },
-    { title: "Agents", description: "Configure segments" },
-    { title: "Task Plan", description: "Set parameters" },
-    { title: "Review", description: "Save experiment" },
+    { title: "Basics", content: "Name & description" },
+    { title: "Features", content: "Define schema" },
+    { title: "Alternatives", content: "Add options" },
+    { title: "Agents", content: "Configure segments" },
+    { title: "Task Plan", content: "Set parameters" },
+    { title: "Review", content: "Save experiment" },
   ];
-
-  // Handle normalize (placeholder - just parse basic format)
-  const handleNormalize = () => {
-    // TODO: Implement actual normalization logic
-    // For now, just show a message
-    message.info("Normalization will be implemented. Add alternatives manually for now.");
-  };
 
   // Handle save experiment
   const handleSave = async () => {
@@ -222,7 +215,11 @@ export default function NewExperimentPage() {
             <AlternativesInput
               value={rawInput}
               onChange={setRawInput}
-              onNormalize={handleNormalize}
+              features={draft.featureSchema?.features || []}
+              onAlternativesParsed={(parsed) => {
+                // Merge with existing alternatives or replace
+                setAlternatives((prev) => [...prev, ...parsed]);
+              }}
             />
             <AlternativesTable
               alternatives={alternatives}
@@ -269,25 +266,25 @@ export default function NewExperimentPage() {
               title="Ready to create experiment"
               subTitle={
                 <Space orientation="vertical">
-                  <span>
-                    <strong>Name:</strong> {draft.name || "Untitled"}
-                  </span>
-                  <span>
-                    <strong>Features:</strong>{" "}
-                    {draft.featureSchema?.features?.length || 0}
-                  </span>
-                  <span>
-                    <strong>Alternatives:</strong> {alternatives.length}
-                  </span>
-                  <span>
-                    <strong>Agents:</strong> {draft.agentPlan?.totalAgents || 0} across{" "}
-                    {draft.agentPlan?.segments?.length || 0} segments
-                  </span>
-                  <span>
-                    <strong>Tasks per agent:</strong>{" "}
-                    {draft.taskPlan?.tasksPerAgent || 10}
-                  </span>
-                </Space>
+                <span>
+                  <strong>Name:</strong> {draft.name || "Untitled"}
+                </span>
+                <span>
+                  <strong>Features:</strong>{" "}
+                  {draft.featureSchema?.features?.length || 0}
+                </span>
+                <span>
+                  <strong>Alternatives:</strong> {alternatives.length}
+                </span>
+                <span>
+                  <strong>Agents:</strong> {draft.agentPlan?.totalAgents || 0} across{" "}
+                  {draft.agentPlan?.segments?.length || 0} segments
+                </span>
+                <span>
+                  <strong>Tasks per agent:</strong>{" "}
+                  {draft.taskPlan?.tasksPerAgent || 10}
+                </span>
+              </Space>
               }
               extra={
                 <Button
