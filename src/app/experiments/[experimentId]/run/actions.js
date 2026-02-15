@@ -253,6 +253,32 @@ function normalizeChoice(rawChoice, alternatives, alternativeIds) {
   return null;
 }
 
+function createConcurrencyRunner(limit) {
+  const max = Math.max(1, Number.parseInt(limit, 10) || 1);
+  const queue = [];
+  let active = 0;
+
+  const pump = () => {
+    while (active < max && queue.length > 0) {
+      const next = queue.shift();
+      active++;
+      Promise.resolve()
+        .then(next.task)
+        .then(next.resolve, next.reject)
+        .finally(() => {
+          active--;
+          pump();
+        });
+    }
+  };
+
+  return (task) =>
+    new Promise((resolve, reject) => {
+      queue.push({ task, resolve, reject });
+      pump();
+    });
+}
+
 /**
  * Get an LLM-powered decision for a synthetic agent.
  *
@@ -390,9 +416,9 @@ export async function getAgentDecision({
  * Pipeline: web search → image fetch → LLM sprite generation → post-process.
  *
  * @param {string} productName — alternative name (e.g. "MacBook Pro 14")
- * @returns {{ success: boolean, spriteSheetDataUrl?: string, grid?: number[], frameSize?: number, frameDurationMs?: number, error?: string }}
+ * @returns {Promise<{ success: boolean, spriteSheetDataUrl?: string, grid?: number[], frameSize?: number, frameDurationMs?: number, error?: string }>}
  */
-export async function generateAlternativeSprite(productName) {
+async function generateAlternativeSpriteInternal(productName) {
   if (!productName) return { error: "No product name" };
 
   try {
@@ -452,4 +478,49 @@ export async function generateAlternativeSprite(productName) {
     );
     return { error: err.message || "Sprite generation failed" };
   }
+}
+
+export async function generateAlternativeSprite(productName) {
+  return generateAlternativeSpriteInternal(productName);
+}
+
+/**
+ * Batch sprite generation in one server action call, with bounded concurrency.
+ * @param {Array<{ id: string, name: string } | string>} alternatives
+ * @param {{ concurrency?: number }} [options]
+ * @returns {Promise<Array<{ id: string, name: string, success?: boolean, spriteSheetDataUrl?: string, grid?: number[], frameSize?: number, frameDurationMs?: number, error?: string }>>}
+ */
+export async function generateAlternativeSprites(alternatives, options = {}) {
+  const list = Array.isArray(alternatives) ? alternatives : [];
+  const normalized = list
+    .map((item) => {
+      if (typeof item === "string") {
+        const value = item.trim();
+        return value ? { id: value, name: value } : null;
+      }
+      const id = item?.id ? String(item.id) : "";
+      const name = item?.name ? String(item.name) : id;
+      return id ? { id, name } : null;
+    })
+    .filter(Boolean);
+
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const run = createConcurrencyRunner(options.concurrency || 6);
+  const results = await Promise.all(
+    normalized.map((alt) =>
+      run(async () => {
+        const result = await generateAlternativeSpriteInternal(alt.name);
+        return {
+          id: alt.id,
+          name: alt.name,
+          ...result,
+        };
+      }),
+    ),
+  );
+
+  return results;
 }

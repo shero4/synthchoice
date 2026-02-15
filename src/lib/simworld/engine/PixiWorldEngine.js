@@ -272,6 +272,7 @@ export class PixiWorldEngine {
     const anchor = liveEntry.container.overlayAnchor || { x: 0, y: -84 };
     overlay.x = anchor.x;
     overlay.y = anchor.y;
+    overlay.zIndex = 10; // above house (zIndex 1) so option sprite appears on top of roof
 
     liveEntry.container.addChild(overlay);
     liveEntry.overlay = overlay;

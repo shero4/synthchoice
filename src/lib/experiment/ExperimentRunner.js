@@ -10,6 +10,7 @@
 
 import {
   generateAlternativeSprite,
+  generateAlternativeSprites,
   getAgentDecision,
 } from "@/app/experiments/[experimentId]/run/actions";
 
@@ -68,6 +69,48 @@ function expandSegmentsToAgents(segments) {
         traits: { ...seg.traits },
       });
     }
+  }
+
+  return agents;
+}
+
+function expandSegmentsToTargetTotal(segments, targetTotal) {
+  const desiredTotal = Number.parseInt(targetTotal, 10);
+  const baseAgents = expandSegmentsToAgents(segments);
+  if (!Number.isFinite(desiredTotal) || desiredTotal <= 0) {
+    return baseAgents;
+  }
+  if (baseAgents.length >= desiredTotal || segments.length === 0) {
+    return baseAgents;
+  }
+
+  const agents = [...baseAgents];
+  const segCounters = {};
+  segments.forEach((seg) => {
+    segCounters[seg.segmentId] = Number.parseInt(seg.count, 10) || 0;
+  });
+
+  let segIndex = 0;
+  while (agents.length < desiredTotal) {
+    const seg = segments[segIndex % segments.length];
+    segIndex++;
+    segCounters[seg.segmentId] = (segCounters[seg.segmentId] || 0) + 1;
+    const idx = segCounters[seg.segmentId];
+
+    const personality = seg.traits?.personality || "Agent";
+    const location = seg.traits?.location || "";
+    const name = location
+      ? `${personality} #${idx} (${location})`
+      : `${personality} #${idx}`;
+
+    agents.push({
+      id: `${seg.segmentId}_${idx}`,
+      name,
+      segmentId: seg.segmentId,
+      label: seg.label,
+      modelTag: seg.modelTag || "stub",
+      traits: { ...seg.traits },
+    });
   }
 
   return agents;
@@ -257,7 +300,10 @@ export class ExperimentRunner {
 
     // 2. Expand segments into individual agents
     const segments = this.experiment?.agentPlan?.segments || [];
-    const expandedAgents = expandSegmentsToAgents(segments);
+    const expandedAgents = expandSegmentsToTargetTotal(
+      segments,
+      this.experiment?.agentPlan?.totalAgents,
+    );
 
     // Shuffle so segments are interleaved
     this.allAgents = shuffle(expandedAgents);
@@ -278,46 +324,82 @@ export class ExperimentRunner {
     }
 
     // 4. Generate product sprites with bounded parallelism.
-    await runWithConcurrency(
-      this.alternatives,
-      this.optionSpriteConcurrency,
-      async (alt) => {
-        try {
-          const result = await generateAlternativeSprite(alt.name || alt.id);
-          if (result?.success && result.spriteSheetDataUrl) {
-            const optionId = this.altToOptionId.get(alt.id);
-            if (optionId) {
-              this.runtime.updateOptionVisual(optionId, {
-                spriteSheetDataUrl: result.spriteSheetDataUrl,
-                grid: result.grid,
-                frameSize: result.frameSize,
-                frameDurationMs: result.frameDurationMs,
-              });
-            }
-            return { ok: true };
+    let spriteResults = null;
+    try {
+      spriteResults = await generateAlternativeSprites(
+        this.alternatives.map((alt) => ({
+          id: alt.id,
+          name: alt.name || alt.id,
+        })),
+        { concurrency: this.optionSpriteConcurrency },
+      );
+    } catch (batchErr) {
+      console.warn(
+        "[ExperimentRunner] Batch sprite generation failed, using fallback:",
+        batchErr.message,
+      );
+    }
+
+    if (Array.isArray(spriteResults) && spriteResults.length > 0) {
+      for (const result of spriteResults) {
+        if (result?.success && result.spriteSheetDataUrl) {
+          const optionId = this.altToOptionId.get(result.id);
+          if (optionId) {
+            this.runtime.updateOptionVisual(optionId, {
+              spriteSheetDataUrl: result.spriteSheetDataUrl,
+              grid: result.grid,
+              frameSize: result.frameSize,
+              frameDurationMs: result.frameDurationMs,
+            });
           }
-          console.warn(
-            `[ExperimentRunner] Sprite gen skipped for "${alt.name}":`,
-            result?.error,
-          );
-          return { ok: false, error: result?.error || "No sprite returned" };
-        } catch (err) {
-          console.warn(
-            `[ExperimentRunner] Sprite gen failed for "${alt.name}":`,
-            err.message,
-          );
-          return { ok: false, error: err.message };
-        }
-      },
-      ({ value }) => {
-        if (value?.ok) {
           this._optionsReady++;
         } else {
           this._optionsFailed++;
         }
         this._emitProgress();
-      },
-    );
+      }
+    } else {
+      await runWithConcurrency(
+        this.alternatives,
+        this.optionSpriteConcurrency,
+        async (alt) => {
+          try {
+            const result = await generateAlternativeSprite(alt.name || alt.id);
+            if (result?.success && result.spriteSheetDataUrl) {
+              const optionId = this.altToOptionId.get(alt.id);
+              if (optionId) {
+                this.runtime.updateOptionVisual(optionId, {
+                  spriteSheetDataUrl: result.spriteSheetDataUrl,
+                  grid: result.grid,
+                  frameSize: result.frameSize,
+                  frameDurationMs: result.frameDurationMs,
+                });
+              }
+              return { ok: true };
+            }
+            console.warn(
+              `[ExperimentRunner] Sprite gen skipped for "${alt.name}":`,
+              result?.error,
+            );
+            return { ok: false, error: result?.error || "No sprite returned" };
+          } catch (err) {
+            console.warn(
+              `[ExperimentRunner] Sprite gen failed for "${alt.name}":`,
+              err.message,
+            );
+            return { ok: false, error: err.message };
+          }
+        },
+        ({ value }) => {
+          if (value?.ok) {
+            this._optionsReady++;
+          } else {
+            this._optionsFailed++;
+          }
+          this._emitProgress();
+        },
+      );
+    }
 
     this.status = RunnerStatus.READY;
     this._emitProgress();

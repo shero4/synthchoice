@@ -19,6 +19,7 @@ export function createBuilding(
   housesTexture,
 ) {
   const container = new Container();
+  container.sortableChildren = true; // use zIndex so overlay can sit above house
   container.overlayAnchor = { x: 0, y: -84 };
 
   // --- Custom full house (prevents broken crop/slicing) ---
@@ -91,6 +92,7 @@ export function createBuilding(
     .fill({ color: 0xfff8e7, alpha: 0.95 })
     .stroke({ color: 0x8b7355, width: 1.5 });
   signBg.y = 24;
+  signBg.zIndex = 2;
   container.addChild(signBg);
 
   const signText = new Text({
@@ -105,6 +107,7 @@ export function createBuilding(
   signText.anchor.set(0.5, 0);
   signText.x = 0;
   signText.y = signBg.y + 3;
+  signText.zIndex = 3;
   container.addChild(signText);
 
   // Position the entire container at the tile position
