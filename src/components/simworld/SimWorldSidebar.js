@@ -2,17 +2,19 @@
 
 import {
   ArrowRightOutlined,
+  CheckCircleOutlined,
   LogoutOutlined,
   MessageOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { Badge, Card, Collapse, Empty, List, Tag, Typography } from "antd";
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 const ACTION_ICONS = {
   say: <MessageOutlined />,
   move: <ArrowRightOutlined />,
+  pick: <CheckCircleOutlined />,
   exit: <LogoutOutlined />,
   "sprite.added": <UserOutlined />,
 };
@@ -20,6 +22,7 @@ const ACTION_ICONS = {
 const ACTION_COLORS = {
   say: "blue",
   move: "green",
+  pick: "gold",
   exit: "red",
   "sprite.added": "purple",
 };
@@ -43,6 +46,9 @@ function ActionItem({ action }) {
     case "move":
       description = `Moved to: ${action.detail?.optionLabel || action.detail?.optionId || "unknown"}`;
       break;
+    case "pick":
+      description = `Picked: ${action.detail?.optionLabel || action.detail?.optionId || "unknown"}`;
+      break;
     case "exit":
       description = "Exited the world";
       break;
@@ -54,7 +60,14 @@ function ActionItem({ action }) {
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "4px 0" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+        padding: "4px 0",
+      }}
+    >
       <Tag
         color={ACTION_COLORS[action.type] || "default"}
         icon={ACTION_ICONS[action.type]}
@@ -89,10 +102,7 @@ export default function SimWorldSidebar({ sprites, actionLog }) {
     key: sprite.id,
     label: (
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Badge
-          color={sprite.color || "#64748b"}
-          style={{ flexShrink: 0 }}
-        />
+        <Badge color={sprite.color || "#64748b"} style={{ flexShrink: 0 }} />
         <Text strong style={{ fontSize: 13 }}>
           {sprite.name}
         </Text>
@@ -108,18 +118,16 @@ export default function SimWorldSidebar({ sprites, actionLog }) {
     ),
     children: (
       <div style={{ maxHeight: 200, overflowY: "auto" }}>
-        {(actionsBySprite[sprite.id] || []).length === 0 ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            No actions yet
-          </Text>
-        ) : (
-          <List
-            dataSource={[...(actionsBySprite[sprite.id] || [])].reverse()}
-            renderItem={(action) => <ActionItem action={action} />}
-            split={false}
-            size="small"
-          />
-        )}
+        {(actionsBySprite[sprite.id] || []).length === 0
+          ? <Text type="secondary" style={{ fontSize: 12 }}>
+              No actions yet
+            </Text>
+          : <List
+              dataSource={[...(actionsBySprite[sprite.id] || [])].reverse()}
+              renderItem={(action) => <ActionItem action={action} />}
+              split={false}
+              size="small"
+            />}
       </div>
     ),
   }));
@@ -154,20 +162,18 @@ export default function SimWorldSidebar({ sprites, actionLog }) {
         </div>
       }
     >
-      {sprites.length === 0 ? (
-        <Empty
-          description="No sprites yet"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          style={{ padding: "40px 0" }}
-        />
-      ) : (
-        <Collapse
-          items={collapseItems}
-          defaultActiveKey={sprites.map((s) => s.id)}
-          ghost
-          size="small"
-        />
-      )}
+      {sprites.length === 0
+        ? <Empty
+            description="No sprites yet"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            style={{ padding: "40px 0" }}
+          />
+        : <Collapse
+            items={collapseItems}
+            defaultActiveKey={sprites.map((s) => s.id)}
+            ghost
+            size="small"
+          />}
     </Card>
   );
 }

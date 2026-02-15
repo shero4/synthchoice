@@ -274,6 +274,63 @@ export class SimWorldRuntime {
   }
 
   /**
+   * Pick an option's product sprite when the character is at that option.
+   */
+  async pick(spriteId, optionId) {
+    const option = this.optionsMap.get(optionId);
+    if (!option) {
+      throw new Error(`Option "${optionId}" not found.`);
+    }
+
+    if (!option.visual?.spriteSheetDataUrl) {
+      throw new Error(
+        `Option "${option.label || optionId}" has no product sprite.`,
+      );
+    }
+
+    const character = this.store.getState().characters[spriteId];
+    if (!character) {
+      throw new Error(`Sprite "${spriteId}" not found.`);
+    }
+
+    // Must be at the house entrance area (same target offset used by moveTo).
+    const pickTarget = { x: option.x, y: option.y + 20 };
+    const dx = character.position.x - pickTarget.x;
+    const dy = character.position.y - pickTarget.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > WORLD_CONFIG.pickRangePx) {
+      throw new Error(
+        `Agent must be at "${option.label}" to pick (within ${WORLD_CONFIG.pickRangePx}px).`,
+      );
+    }
+
+    const previousOptionId = character.pickedOptionId || null;
+    await this.engine.setCharacterPickup(spriteId, option.visual, { optionId });
+
+    const updated = {
+      ...character,
+      pickedOptionId: option.id,
+      pickedAt: Date.now(),
+    };
+    this.store.dispatch(simActions.upsertCharacter(updated));
+
+    this._emitAction(spriteId, "pick", {
+      optionId: option.id,
+      optionLabel: option.label,
+      replacedPrevious: Boolean(
+        previousOptionId && previousOptionId !== option.id,
+      ),
+      previousOptionId,
+    });
+
+    return {
+      spriteId,
+      optionId: option.id,
+      previousOptionId,
+    };
+  }
+
+  /**
    * Exit a sprite from the world — walk to nearest exit, then remove.
    */
   async exit(spriteId) {

@@ -32,6 +32,9 @@ function getDirection(dx, dy) {
   return dy > 0 ? "down" : "up";
 }
 
+const STATION_OVERLAY_TARGET_HEIGHT = 52;
+const PICKUP_OVERLAY_TARGET_HEIGHT = 30;
+
 // ---------------------------------------------------------------------------
 // PixiWorldEngine — v2 with tile-based rendering
 // ---------------------------------------------------------------------------
@@ -256,27 +259,60 @@ export class PixiWorldEngine {
     const entry = this.stations.get(stationId);
     if (!entry?.station?.visual?.spriteSheetDataUrl) return;
 
-    const visual = entry.station.visual;
-    const [rawCols, rawRows] = Array.isArray(visual.grid)
-      ? visual.grid
-      : [2, 2];
-    const cols = Math.max(1, Number.parseInt(rawCols, 10) || 2);
-    const rows = Math.max(1, Number.parseInt(rawRows, 10) || 2);
-
-    const texture = await Assets.load(visual.spriteSheetDataUrl);
-    if (!texture?.source) return;
-
-    // Station may have been removed/replaced while texture loaded.
+    const visualFrames = await this._buildVisualFrames(entry.station.visual);
     const liveEntry = this.stations.get(stationId);
     if (!liveEntry || liveEntry !== entry) return;
 
-    const frameW = Math.floor(texture.width / cols);
-    const frameH = Math.floor(texture.height / rows);
-    if (frameW < 1 || frameH < 1) return;
+    this._clearStationOverlay(liveEntry);
+
+    const overlay = this._createAnimatedVisualSprite(
+      visualFrames,
+      STATION_OVERLAY_TARGET_HEIGHT,
+    );
+    overlay.anchor.set(0.5, 1);
+
+    const anchor = liveEntry.container.overlayAnchor || { x: 0, y: -84 };
+    overlay.x = anchor.x;
+    overlay.y = anchor.y;
+
+    liveEntry.container.addChild(overlay);
+    liveEntry.overlay = overlay;
+  }
+
+  _normalizeVisualConfig(visual) {
+    const [rawCols, rawRows] = Array.isArray(visual.grid)
+      ? visual.grid
+      : [2, 2];
+    return {
+      cols: Math.max(1, Number.parseInt(rawCols, 10) || 2),
+      rows: Math.max(1, Number.parseInt(rawRows, 10) || 2),
+      frameDurationMs: Math.max(
+        50,
+        Number.parseInt(visual.frameDurationMs, 10) || 150,
+      ),
+    };
+  }
+
+  async _buildVisualFrames(visual) {
+    if (!visual?.spriteSheetDataUrl) {
+      throw new Error("Product sprite sheet is missing.");
+    }
+
+    const config = this._normalizeVisualConfig(visual);
+    const texture = await Assets.load(visual.spriteSheetDataUrl);
+    if (!texture?.source) {
+      throw new Error("Failed to load sprite sheet texture.");
+    }
+
+    const frameW = Math.floor(texture.width / config.cols);
+    const frameH = Math.floor(texture.height / config.rows);
+    if (frameW < 1 || frameH < 1) {
+      throw new Error("Invalid sprite frame dimensions.");
+    }
 
     const frames = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < config.rows; r++) {
+      for (let c = 0; c < config.cols; c++) {
         frames.push(
           new Texture({
             source: texture.source,
@@ -285,32 +321,26 @@ export class PixiWorldEngine {
         );
       }
     }
+    if (frames.length === 0) {
+      throw new Error("No frames found in sprite sheet.");
+    }
 
-    if (frames.length === 0) return;
+    return {
+      frames,
+      frameW,
+      frameH,
+      frameDurationMs: config.frameDurationMs,
+    };
+  }
 
-    this._clearStationOverlay(liveEntry);
-
-    const overlay = new AnimatedSprite(frames);
-    overlay.anchor.set(0.5, 1);
-    const frameDurationMs = Math.max(
-      50,
-      Number.parseInt(visual.frameDurationMs, 10) || 150,
-    );
+  _createAnimatedVisualSprite(visualFrames, targetHeight) {
+    const overlay = new AnimatedSprite(visualFrames.frames);
     // Pixi animationSpeed is normalized to 60 FPS.
-    overlay.animationSpeed = 1000 / (frameDurationMs * 60);
+    overlay.animationSpeed = 1000 / (visualFrames.frameDurationMs * 60);
     overlay.loop = true;
     overlay.play();
-
-    const targetHeight = 52;
-    const scale = targetHeight / frameH;
-    overlay.scale.set(scale);
-
-    const anchor = liveEntry.container.overlayAnchor || { x: 0, y: -84 };
-    overlay.x = anchor.x;
-    overlay.y = anchor.y;
-
-    liveEntry.container.addChild(overlay);
-    liveEntry.overlay = overlay;
+    overlay.scale.set(targetHeight / visualFrames.frameH);
+    return overlay;
   }
 
   _clearStationOverlay(entry) {
@@ -433,6 +463,8 @@ export class PixiWorldEngine {
       animations,
       state: "idle",
       facing: "down",
+      pickup: null,
+      pickupMeta: null,
     });
   }
 
@@ -441,9 +473,43 @@ export class PixiWorldEngine {
     if (!entry) return;
 
     this.clearSpeechBubble(characterId);
+    this.clearCharacterPickup(characterId);
     entry.sprite.destroy();
     entry.label.destroy();
     this.characters.delete(characterId);
+  }
+
+  async setCharacterPickup(characterId, visual, meta = {}) {
+    const entry = this.characters.get(characterId);
+    if (!entry) {
+      throw new Error(`Character "${characterId}" not found.`);
+    }
+
+    const visualFrames = await this._buildVisualFrames(visual);
+
+    this.clearCharacterPickup(characterId);
+
+    const pickup = this._createAnimatedVisualSprite(
+      visualFrames,
+      PICKUP_OVERLAY_TARGET_HEIGHT,
+    );
+    pickup.anchor.set(0.5, 1);
+    this.layers.ui.addChild(pickup);
+
+    entry.pickup = pickup;
+    entry.pickupMeta = { ...meta };
+    this._updateCharacterUiPositions(entry);
+  }
+
+  clearCharacterPickup(characterId) {
+    const entry = this.characters.get(characterId);
+    if (!entry?.pickup) return;
+
+    entry.pickup.stop();
+    entry.pickup.destroy();
+    entry.pickup = null;
+    entry.pickupMeta = null;
+    this._updateCharacterUiPositions(entry);
   }
 
   /**
@@ -518,10 +584,27 @@ export class PixiWorldEngine {
     entry.sprite.x = position.x;
     entry.sprite.y = position.y;
     entry.sprite.zIndex = position.y;
+    this._updateCharacterUiPositions(entry);
+  }
 
-    entry.label.x = position.x;
-    entry.label.y = position.y - entry.sprite.height - 4;
-    entry.label.zIndex = position.y + 1;
+  _updateCharacterUiPositions(entry) {
+    if (!entry?.sprite || !entry?.label) return;
+
+    const pickupGap = 8;
+    const defaultLabelGap = 4;
+
+    entry.label.x = entry.sprite.x;
+    entry.label.zIndex = entry.sprite.zIndex + 2;
+
+    if (entry.pickup) {
+      entry.pickup.x = entry.sprite.x;
+      entry.pickup.y = entry.sprite.y - entry.sprite.height - pickupGap;
+      entry.pickup.zIndex = entry.sprite.zIndex + 1;
+      entry.label.y = entry.pickup.y - entry.pickup.height - defaultLabelGap;
+      return;
+    }
+
+    entry.label.y = entry.sprite.y - entry.sprite.height - defaultLabelGap;
   }
 
   // -----------------------------------------------------------------------
@@ -599,7 +682,7 @@ export class PixiWorldEngine {
   tick() {
     for (const [characterId, entry] of this.characters.entries()) {
       entry.sprite.zIndex = entry.sprite.y;
-      entry.label.zIndex = entry.sprite.y + 1;
+      this._updateCharacterUiPositions(entry);
 
       const bubble = this.bubbles.get(characterId);
       if (!bubble) continue;

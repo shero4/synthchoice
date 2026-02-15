@@ -36,13 +36,43 @@ export const EXIT_POINTS = {
 // ---------------------------------------------------------------------------
 export const SHOP_TYPES = [
   { id: "cafe", label: "Cafe", icon: "☕", personalities: ["ENFP", "ESFJ"] },
-  { id: "library", label: "Library", icon: "📚", personalities: ["INTJ", "INTP"] },
+  {
+    id: "library",
+    label: "Library",
+    icon: "📚",
+    personalities: ["INTJ", "INTP"],
+  },
   { id: "gym", label: "Gym", icon: "💪", personalities: ["ESTP", "ESFP"] },
-  { id: "gallery", label: "Art Gallery", icon: "🎨", personalities: ["INFP", "ISFP"] },
-  { id: "office", label: "Office", icon: "💼", personalities: ["ESTJ", "ENTJ"] },
-  { id: "tech", label: "Tech Shop", icon: "💻", personalities: ["ISTP", "INTP"] },
-  { id: "meditation", label: "Meditation", icon: "🧘", personalities: ["INFJ", "ISFJ"] },
-  { id: "music", label: "Music Hall", icon: "🎵", personalities: ["ENFP", "ESFP"] },
+  {
+    id: "gallery",
+    label: "Art Gallery",
+    icon: "🎨",
+    personalities: ["INFP", "ISFP"],
+  },
+  {
+    id: "office",
+    label: "Office",
+    icon: "💼",
+    personalities: ["ESTJ", "ENTJ"],
+  },
+  {
+    id: "tech",
+    label: "Tech Shop",
+    icon: "💻",
+    personalities: ["ISTP", "INTP"],
+  },
+  {
+    id: "meditation",
+    label: "Meditation",
+    icon: "🧘",
+    personalities: ["INFJ", "ISFJ"],
+  },
+  {
+    id: "music",
+    label: "Music Hall",
+    icon: "🎵",
+    personalities: ["ENFP", "ESFP"],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -67,14 +97,14 @@ function shopSlot(angleDeg, nearestExit) {
 }
 
 export const SHOP_POSITIONS = [
-  shopSlot(0, "north"),     // N   — slot 0
-  shopSlot(45, "north"),    // NE  — slot 1
-  shopSlot(90, "east"),     // E   — slot 2
-  shopSlot(135, "south"),   // SE  — slot 3
-  shopSlot(180, "south"),   // S   — slot 4
-  shopSlot(225, "south"),   // SW  — slot 5
-  shopSlot(270, "west"),    // W   — slot 6
-  shopSlot(315, "north"),   // NW  — slot 7
+  shopSlot(0, "north"), // N   — slot 0
+  shopSlot(45, "north"), // NE  — slot 1
+  shopSlot(90, "east"), // E   — slot 2
+  shopSlot(135, "south"), // SE  — slot 3
+  shopSlot(180, "south"), // S   — slot 4
+  shopSlot(225, "south"), // SW  — slot 5
+  shopSlot(270, "west"), // W   — slot 6
+  shopSlot(315, "north"), // NW  — slot 7
 ];
 
 // ---------------------------------------------------------------------------
@@ -82,14 +112,14 @@ export const SHOP_POSITIONS = [
 // Pixel rects in the 16x16 tileset (Serene_Village_16x16.png, 304×720)
 // ---------------------------------------------------------------------------
 export const HOUSE_VARIANTS = {
-  cafe:       { x: 0,   y: 272, w: 80, h: 80, roofColor: "red" },
-  library:    { x: 0,   y: 464, w: 80, h: 80, roofColor: "blue" },
-  gym:        { x: 0,   y: 368, w: 80, h: 80, roofColor: "green" },
-  gallery:    { x: 96,  y: 272, w: 96, h: 80, roofColor: "red" },
-  office:     { x: 96,  y: 464, w: 96, h: 80, roofColor: "blue" },
-  tech:       { x: 96,  y: 368, w: 96, h: 80, roofColor: "green" },
-  meditation: { x: 0,   y: 544, w: 80, h: 80, roofColor: "blue" },
-  music:      { x: 96,  y: 336, w: 96, h: 96, roofColor: "red" },
+  cafe: { x: 0, y: 272, w: 80, h: 80, roofColor: "red" },
+  library: { x: 0, y: 464, w: 80, h: 80, roofColor: "blue" },
+  gym: { x: 0, y: 368, w: 80, h: 80, roofColor: "green" },
+  gallery: { x: 96, y: 272, w: 96, h: 80, roofColor: "red" },
+  office: { x: 96, y: 464, w: 96, h: 80, roofColor: "blue" },
+  tech: { x: 96, y: 368, w: 96, h: 80, roofColor: "green" },
+  meditation: { x: 0, y: 544, w: 80, h: 80, roofColor: "blue" },
+  music: { x: 96, y: 336, w: 96, h: 96, roofColor: "red" },
 };
 
 // ---------------------------------------------------------------------------
@@ -110,6 +140,7 @@ export const WORLD_CONFIG = {
     reason: 2500,
   },
   actionTimeoutMs: 15000,
+  pickRangePx: 36,
 };
 
 // ---------------------------------------------------------------------------

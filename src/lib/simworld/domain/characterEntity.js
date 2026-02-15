@@ -20,6 +20,8 @@ export function createCharacterEntity(
     state: CHARACTER_STATES.IDLE,
     home: config.home || { x: fallbackSpawn.x, y: fallbackSpawn.y },
     position: config.position || { x: fallbackSpawn.x, y: fallbackSpawn.y },
+    pickedOptionId: config.pickedOptionId || null,
+    pickedAt: config.pickedAt || null,
     choiceHistory: [],
   };
 }

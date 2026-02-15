@@ -2,6 +2,7 @@
 
 import {
   ArrowRightOutlined,
+  CheckOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
   LogoutOutlined,
@@ -285,6 +286,26 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
       message.error(`Exit failed: ${err.message}`);
     } finally {
       setActionLoading("exit", false);
+    }
+  };
+
+  const handlePick = async () => {
+    if (!runtime || !selectedSprite) {
+      message.warning("Select a sprite first");
+      return;
+    }
+    if (!selectedOption) {
+      message.warning("Select an option to pick from");
+      return;
+    }
+    setActionLoading("pick", true);
+    try {
+      await runtime.pick(selectedSprite, selectedOption);
+      onUpdate?.();
+    } catch (err) {
+      message.error(`Pick failed: ${err.message}`);
+    } finally {
+      setActionLoading("pick", false);
     }
   };
 
@@ -615,6 +636,18 @@ export default function TestToolbar({ runtime, sprites, options, onUpdate }) {
                     </Button>
                   </Tooltip>
                 </Space.Compact>
+
+                <Tooltip title="Pick product from selected house">
+                  <Button
+                    icon={<CheckOutlined />}
+                    onClick={handlePick}
+                    loading={loading.pick}
+                    size="small"
+                    disabled={!selectedSprite || !selectedOption}
+                  >
+                    Pick
+                  </Button>
+                </Tooltip>
 
                 <Tooltip title="Exit world">
                   <Button

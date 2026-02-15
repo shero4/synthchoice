@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { Progress, Typography } from "antd";
 import { PlayCircleOutlined } from "@ant-design/icons";
+import { Progress, Typography } from "antd";
+import { useCallback, useRef, useState } from "react";
 import SimWorldCanvas from "@/components/simworld/SimWorldCanvas";
 import SimWorldSidebar from "@/components/simworld/SimWorldSidebar";
 import TestToolbar from "@/components/simworld/TestToolbar";
@@ -37,6 +37,7 @@ export default function RunnerPage() {
       if (
         event.type === "sprite.added" ||
         event.type === "sprite.removed" ||
+        event.type === "pick" ||
         event.type === "exit"
       ) {
         setSprites(runtime.getSprites());
