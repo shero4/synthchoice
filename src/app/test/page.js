@@ -29,12 +29,7 @@ import {
   LoadingOutlined,
   CloseCircleOutlined,
 } from "@ant-design/icons";
-import {
-  generateSprite,
-  searchProduct,
-  fetchProductImage,
-  generateSpriteFromDataUrl,
-} from "./actions";
+import { generateSprite, searchProduct } from "./actions";
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -461,24 +456,33 @@ export default function TestPage() {
         throw new Error("No image found for product");
       }
 
-      // Step 2: Fetch the image
+      // Step 2: Fetch the image (use API route to avoid RSC serialization limits)
       const step2Start = performance.now();
       updateStep("fetch", {
         status: "loading",
         description: "Downloading product image...",
       });
 
-      const fetchResult = await fetchProductImage(searchResult.imageUrl, {
-        imageUrls: searchResult.imageUrls ?? [],
+      const fetchUrls = [
+        ...(searchResult.imageUrl ? [searchResult.imageUrl] : []),
+        ...(searchResult.imageUrls ?? []).filter(
+          (u) => u && u !== searchResult.imageUrl,
+        ),
+      ];
+      const fetchRes = await fetch("/api/sprites/fetch-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrls: fetchUrls }),
       });
+      const fetchResult = await fetchRes.json();
       const step2Duration = Math.round(performance.now() - step2Start);
 
-      if (fetchResult.error) {
+      if (!fetchRes.ok || fetchResult.error) {
         updateStep("fetch", {
           status: "error",
-          description: fetchResult.error,
+          description: fetchResult.error || "Failed to fetch image",
         });
-        throw new Error(fetchResult.error);
+        throw new Error(fetchResult.error || "Failed to fetch image");
       }
 
       // Set logo preview from fetched image
@@ -505,20 +509,27 @@ export default function TestPage() {
         description: `Generating sprite with ${provider}...`,
       });
 
-      const spriteResult = await generateSpriteFromDataUrl(
-        fetchResult.imageDataUrl,
-        provider,
-        `${gridCols}x${gridRows}`,
-        frameSize,
-        generateGif,
-      );
+      // Use API route instead of server action to avoid RSC serialization limits with large base64
+      const genRes = await fetch("/api/sprites/generate-from-dataurl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageDataUrl: fetchResult.imageDataUrl,
+          provider,
+          grid: `${gridCols}x${gridRows}`,
+          frameSize,
+          generateGif,
+        }),
+      });
 
-      if (spriteResult.error) {
+      const spriteResult = await genRes.json();
+
+      if (!genRes.ok || spriteResult.error) {
         updateStep("generate", {
           status: "error",
-          description: spriteResult.error,
+          description: spriteResult.error || "Failed to generate sprite",
         });
-        throw new Error(spriteResult.error);
+        throw new Error(spriteResult.error || "Failed to generate sprite");
       }
 
       setRawImage(spriteResult.rawImage);
