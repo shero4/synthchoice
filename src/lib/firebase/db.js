@@ -24,13 +24,39 @@ import { db } from "./client";
  * @returns {Promise<Array>}
  */
 export async function getExperiments(ownerUid) {
-  const q = query(
-    collection(db, "experiments"),
-    where("ownerUid", "==", ownerUid),
-    orderBy("createdAt", "desc")
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // Note: Using where + orderBy requires a composite index in Firestore.
+  // If the index doesn't exist, this query will fail.
+  // To create the index, check the browser console for the auto-generated link.
+  try {
+    const q = query(
+      collection(db, "experiments"),
+      where("ownerUid", "==", ownerUid),
+      orderBy("createdAt", "desc")
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    // If index is missing, fall back to client-side sorting
+    if (error.code === "failed-precondition" || error.message?.includes("index")) {
+      console.warn(
+        "Firestore index missing for experiments query. Falling back to client-side sorting.",
+        "Create the index using the link in the error above."
+      );
+      const q = query(
+        collection(db, "experiments"),
+        where("ownerUid", "==", ownerUid)
+      );
+      const snapshot = await getDocs(q);
+      const experiments = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Sort by createdAt descending on client side
+      return experiments.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds * 1000 || 0;
+        const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds * 1000 || 0;
+        return bTime - aTime;
+      });
+    }
+    throw error;
+  }
 }
 
 /**

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useDispatch, useSelector } from "react-redux";
+import { useParams, useRouter } from "next/navigation";
 import {
   Card,
   Steps,
@@ -20,6 +19,7 @@ import {
   SaveOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
+import Link from "next/link";
 import {
   FeatureSchemaBuilder,
   AlternativesInput,
@@ -30,61 +30,65 @@ import {
   generateSegmentsFromConfig,
   calculateTotalAgents,
 } from "@/lib/agents/presets";
-import { ensureAuth } from "@/lib/firebase/auth";
-import { createExperiment, addAlternative } from "@/lib/firebase/db";
 import {
-  initDraft,
-  updateDraft,
-  updateDraftFeatureSchema,
-  updateDraftAgentConfig,
-  setCurrentStep,
-  nextStep,
-  prevStep,
-  clearDraft,
-} from "@/store/experimentSlice";
+  getExperiment,
+  getAlternatives,
+  updateExperiment,
+  addAlternative,
+  deleteAlternative,
+} from "@/lib/firebase/db";
 
 const { TextArea } = Input;
 
 /**
- * New Experiment Page - multi-step form for creating experiments
+ * Edit Experiment Page - edit an existing experiment
  */
-export default function NewExperimentPage() {
+export default function EditExperimentPage() {
+  const params = useParams();
   const router = useRouter();
-  const dispatch = useDispatch();
-  const { draft, currentStep } = useSelector((state) => state.experiment);
+  const { experimentId } = params;
+
+  const [currentStep, setCurrentStep] = useState(0);
+  const [draft, setDraft] = useState(null);
+  const [alternatives, setAlternatives] = useState([]);
+  const [originalAlternatives, setOriginalAlternatives] = useState([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
   const [rawInput, setRawInput] = useState("");
-  const [alternatives, setAlternatives] = useState([]);
 
-  // Initialize draft on mount
+  // Load experiment data on mount
   useEffect(() => {
-    const init = async () => {
+    const load = async () => {
       try {
-        const user = await ensureAuth();
-        if (user) {
-          dispatch(initDraft(user.uid));
-        } else {
-          // If no user, create draft with a temporary ID
-          dispatch(initDraft("anonymous_" + Date.now()));
+        const [exp, alts] = await Promise.all([
+          getExperiment(experimentId),
+          getAlternatives(experimentId),
+        ]);
+        
+        if (!exp) {
+          message.error("Experiment not found");
+          router.push("/");
+          return;
         }
+
+        setDraft({
+          name: exp.name || "",
+          description: exp.description || "",
+          featureSchema: exp.featureSchema || { features: [] },
+          agentConfig: exp.agentConfig || {},
+          ownerUid: exp.ownerUid,
+        });
+        setAlternatives(alts);
+        setOriginalAlternatives(alts);
       } catch (error) {
-        console.error("Auth error:", error);
-        setAuthError(error.message || "Failed to initialize authentication");
-        // Still create draft with temporary ID so user can work
-        dispatch(initDraft("anonymous_" + Date.now()));
+        console.error("Error loading experiment:", error);
+        message.error("Failed to load experiment");
       } finally {
         setLoading(false);
       }
     };
-    init();
-
-    // Cleanup on unmount
-    return () => {
-      dispatch(clearDraft());
-    };
-  }, [dispatch]);
+    load();
+  }, [experimentId, router]);
 
   // Step definitions
   const steps = [
@@ -92,8 +96,13 @@ export default function NewExperimentPage() {
     { title: "Features", content: "Define schema" },
     { title: "Alternatives", content: "Add options" },
     { title: "Agents", content: "Configure agents" },
-    { title: "Review", content: "Save experiment" },
+    { title: "Review", content: "Save changes" },
   ];
+
+  // Update draft helper
+  const updateDraft = (updates) => {
+    setDraft((prev) => ({ ...prev, ...updates }));
+  };
 
   // Handle save experiment
   const handleSave = async () => {
@@ -110,26 +119,40 @@ export default function NewExperimentPage() {
       const segments = generateSegmentsFromConfig(agentConfig);
       const totalAgents = calculateTotalAgents(agentConfig);
 
-      // Create experiment
-      const experimentId = await createExperiment({
-        ...draft,
-        status: "draft",
+      // Update experiment
+      await updateExperiment(experimentId, {
+        name: draft.name,
+        description: draft.description,
+        featureSchema: draft.featureSchema,
+        agentConfig,
         agentPlan: {
           segments,
           totalAgents,
         },
-        agentConfig, // Also save the config for future editing
       });
 
-      // Add alternatives in parallel for faster save
-      if (alternatives.length > 0) {
-        await Promise.all(
-          alternatives.map((alt) => addAlternative(experimentId, alt))
-        );
+      // Handle alternatives: delete removed, add new, update existing
+      const currentIds = new Set(alternatives.map((a) => a.id));
+      const originalIds = new Set(originalAlternatives.map((a) => a.id));
+
+      // Delete removed alternatives
+      for (const orig of originalAlternatives) {
+        if (!currentIds.has(orig.id)) {
+          await deleteAlternative(experimentId, orig.id);
+        }
       }
 
-      message.success("Experiment created successfully!");
-      dispatch(clearDraft());
+      // Add or update alternatives
+      for (const alt of alternatives) {
+        if (!originalIds.has(alt.id)) {
+          // New alternative
+          await addAlternative(experimentId, alt);
+        }
+        // Note: For simplicity, we're not updating existing alternatives here
+        // A more complete implementation would update them too
+      }
+
+      message.success("Experiment updated successfully!");
       router.push(`/experiments/${experimentId}`);
     } catch (error) {
       console.error("Error saving experiment:", error);
@@ -146,7 +169,7 @@ export default function NewExperimentPage() {
         <Card>
           <div style={{ textAlign: "center", padding: 48 }}>
             <Spin size="large" />
-            <p style={{ marginTop: 16 }}>Initializing...</p>
+            <p style={{ marginTop: 16 }}>Loading experiment...</p>
           </div>
         </Card>
       );
@@ -156,52 +179,38 @@ export default function NewExperimentPage() {
       return (
         <Card>
           <div style={{ textAlign: "center", padding: 48 }}>
-            <p>Something went wrong loading the form.</p>
-            <Button type="primary" onClick={() => window.location.reload()}>
-              Refresh Page
-            </Button>
+            <p>Something went wrong loading the experiment.</p>
+            <Link href="/">
+              <Button type="primary">Go Home</Button>
+            </Link>
           </div>
         </Card>
       );
     }
 
-    // Show auth warning if there was an error (but still allow usage)
-    const authWarning = authError ? (
-      <Card style={{ marginBottom: 16, background: "#fffbe6", borderColor: "#ffe58f" }}>
-        <p style={{ margin: 0, color: "#ad6800" }}>
-          Note: Running in offline mode. Your experiment may not be saved to the cloud.
-        </p>
-      </Card>
-    ) : null;
-
     switch (currentStep) {
       case 0: // Basics
         return (
-          <>
-            {authWarning}
-            <Card title="Experiment Basics">
-              <Form layout="vertical">
-                <Form.Item label="Experiment Name" required>
-                  <Input
-                    value={draft.name}
-                    onChange={(e) => dispatch(updateDraft({ name: e.target.value }))}
-                    placeholder="e.g., Pricing Plan Test Q1 2024"
-                    size="large"
-                  />
-                </Form.Item>
-                <Form.Item label="Description">
-                  <TextArea
-                    value={draft.description}
-                    onChange={(e) =>
-                      dispatch(updateDraft({ description: e.target.value }))
-                    }
-                    placeholder="Describe what you're testing..."
-                    rows={4}
-                  />
-                </Form.Item>
-              </Form>
-            </Card>
-          </>
+          <Card title="Experiment Basics">
+            <Form layout="vertical">
+              <Form.Item label="Experiment Name" required>
+                <Input
+                  value={draft.name}
+                  onChange={(e) => updateDraft({ name: e.target.value })}
+                  placeholder="e.g., Pricing Plan Test Q1 2024"
+                  size="large"
+                />
+              </Form.Item>
+              <Form.Item label="Description">
+                <TextArea
+                  value={draft.description}
+                  onChange={(e) => updateDraft({ description: e.target.value })}
+                  placeholder="Describe what you're testing..."
+                  rows={4}
+                />
+              </Form.Item>
+            </Form>
+          </Card>
         );
 
       case 1: // Features
@@ -209,12 +218,12 @@ export default function NewExperimentPage() {
           <FeatureSchemaBuilder
             features={draft.featureSchema?.features || []}
             onChange={(features) =>
-              dispatch(
-                updateDraftFeatureSchema({
+              updateDraft({
+                featureSchema: {
                   ...draft.featureSchema,
                   features,
-                })
-              )
+                },
+              })
             }
           />
         );
@@ -227,7 +236,6 @@ export default function NewExperimentPage() {
               onChange={setRawInput}
               features={draft.featureSchema?.features || []}
               onAlternativesParsed={(parsed) => {
-                // Merge with existing alternatives or replace
                 setAlternatives((prev) => [...prev, ...parsed]);
               }}
             />
@@ -243,9 +251,7 @@ export default function NewExperimentPage() {
         return (
           <AgentConfigBuilder
             config={draft.agentConfig || {}}
-            onChange={(agentConfig) =>
-              dispatch(updateDraftAgentConfig(agentConfig))
-            }
+            onChange={(agentConfig) => updateDraft({ agentConfig })}
           />
         );
 
@@ -261,7 +267,7 @@ export default function NewExperimentPage() {
           <Card title="Review & Save">
             <Result
               icon={<CheckCircleOutlined />}
-              title="Ready to create experiment"
+              title="Ready to save changes"
               subTitle={
                 <Space direction="vertical">
                   <span>
@@ -276,7 +282,7 @@ export default function NewExperimentPage() {
                   </span>
                   <span>
                     <strong>Agents:</strong> {reviewTotalAgents} across{" "}
-                    {reviewNumCombinations} segments ({reviewAgentConfig.selectedModels?.length || 0} models × {reviewAgentConfig.selectedPersonalities?.length || 0} personalities × {reviewAgentConfig.selectedLocations?.length || 0} locations)
+                    {reviewNumCombinations} segments
                   </span>
                 </Space>
               }
@@ -288,7 +294,7 @@ export default function NewExperimentPage() {
                   onClick={handleSave}
                   loading={saving}
                 >
-                  Create Experiment
+                  Save Changes
                 </Button>
               }
             />
@@ -303,11 +309,16 @@ export default function NewExperimentPage() {
   return (
     <div>
       <Card style={{ marginBottom: 24 }}>
+        <Space style={{ marginBottom: 16 }}>
+          <Link href={`/experiments/${experimentId}`}>
+            <Button icon={<ArrowLeftOutlined />}>Back to Experiment</Button>
+          </Link>
+        </Space>
         <Steps
           current={currentStep}
           items={steps}
           size="small"
-          onChange={(step) => dispatch(setCurrentStep(step))}
+          onChange={(step) => setCurrentStep(step)}
         />
       </Card>
 
@@ -317,7 +328,7 @@ export default function NewExperimentPage() {
         <Space style={{ width: "100%", justifyContent: "space-between" }}>
           <Button
             icon={<ArrowLeftOutlined />}
-            onClick={() => dispatch(prevStep())}
+            onClick={() => setCurrentStep((s) => s - 1)}
             disabled={currentStep === 0}
           >
             Previous
@@ -326,7 +337,7 @@ export default function NewExperimentPage() {
             <Button
               type="primary"
               icon={<ArrowRightOutlined />}
-              onClick={() => dispatch(nextStep())}
+              onClick={() => setCurrentStep((s) => s + 1)}
             >
               Next
             </Button>

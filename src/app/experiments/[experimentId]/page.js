@@ -122,6 +122,19 @@ export default function ExperimentDetailPage() {
     title: f.label || f.key,
     dataIndex: ["features", f.key],
     key: f.key,
+    render: (value) => {
+      if (f.type === "binary") {
+        return value ? "Yes" : "No";
+      }
+      if (f.type === "continuous" && f.unit) {
+        return `${value} ${f.unit}`;
+      }
+      // Handle null/undefined values
+      if (value === null || value === undefined) {
+        return <Text type="secondary">-</Text>;
+      }
+      return String(value);
+    },
   }));
 
   const alternativeColumns = [
@@ -267,9 +280,11 @@ export default function ExperimentDetailPage() {
             </Tag>
           </Space>
           <Space>
-            <Button icon={<EditOutlined />} disabled>
-              Edit
-            </Button>
+            <Link href={`/experiments/${experimentId}/edit`}>
+              <Button icon={<EditOutlined />}>
+                Edit
+              </Button>
+            </Link>
             <Link href={`/experiments/${experimentId}/run`}>
               <Button type="primary" icon={<PlayCircleOutlined />}>
                 Run Experiment

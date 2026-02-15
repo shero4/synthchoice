@@ -34,28 +34,43 @@ export default function HomePage() {
 
   // Set up auth listener and load experiments
   useEffect(() => {
+    let isMounted = true;
+
     const unsubscribe = onAuthChange(async (authUser) => {
       if (authUser) {
         setUser(authUser);
         try {
           const exps = await getExperiments(authUser.uid);
-          setExperiments(exps);
+          if (isMounted) {
+            setExperiments(exps);
+            setLoading(false);
+          }
         } catch (error) {
           console.error("Error loading experiments:", error);
-          message.error("Failed to load experiments");
+          if (isMounted) {
+            message.error("Failed to load experiments");
+            setLoading(false);
+          }
         }
       } else {
-        // Sign in anonymously
+        // Sign in anonymously - don't set loading=false here,
+        // wait for the auth callback with the signed-in user
         try {
           await ensureAuth();
         } catch (error) {
           console.error("Auth error:", error);
+          if (isMounted) {
+            message.error("Authentication failed");
+            setLoading(false);
+          }
         }
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Get status tag color

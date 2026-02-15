@@ -234,7 +234,10 @@ export async function generateSpriteFromDataUrl(
   try {
     // Validate that we have a proper base64 data URL
     if (!imageDataUrl.startsWith("data:image/")) {
-      console.error("Invalid image data URL format:", imageDataUrl.slice(0, 100));
+      console.error(
+        "Invalid image data URL format:",
+        imageDataUrl.slice(0, 100),
+      );
       return { error: "Invalid image format - expected base64 data URL" };
     }
 
