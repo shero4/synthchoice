@@ -7,10 +7,12 @@ export const Models = Object.freeze({
   // Gemini (direct Google API)
   GEMINI_2_FLASH: "gemini-2.0-flash",
   GEMINI_2_5_FLASH: "gemini-2.5-flash",
+  GEMINI_2_5_FLASH_IMAGE: "gemini-2.5-flash-image",
   GEMINI_3: "gemini-3",
 
   // OpenRouter (routes to various backends)
   GEMINI_2_5_FLASH_OPENROUTER: "google/gemini-2.5-flash",
+  GEMINI_2_5_FLASH_IMAGE_PREVIEW: "google/gemini-2.5-flash-image-preview",
   GEMINI_2_FLASH_OPENROUTER: "google/gemini-2.0-flash",
   CLAUDE_SONNET_4_5: "anthropic/claude-sonnet-4.5",
   CLAUDE_OPUS_4_6: "anthropic/claude-opus-4.6",
@@ -25,4 +27,5 @@ export const Models = Object.freeze({
 
   // OpenAI (direct API)
   GPT_5_2_OPENAI: "gpt-5.2",
+  GPT_4_1_MINI: "gpt-4.1-mini",
 });

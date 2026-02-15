@@ -63,7 +63,7 @@ Frame 3: X=0,   Y=128 (bottom-left)  | Frame 4: X=128, Y=128 (bottom-right)
 
 const PROVIDER_TO_MODEL = {
   openrouter: Models.GEMINI_2_5_FLASH_IMAGE_PREVIEW,
-  gemini: Models.GEMINI_2_FLASH_IMAGE,
+  gemini: Models.GEMINI_2_5_FLASH_IMAGE,
   openai: Models.GPT_4_1_MINI,
 };
 

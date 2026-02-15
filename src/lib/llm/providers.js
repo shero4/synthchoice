@@ -15,10 +15,12 @@ export const MODEL_TO_PROVIDER = Object.freeze({
   // Gemini (direct Google API)
   [Models.GEMINI_2_FLASH]: Provider.GEMINI,
   [Models.GEMINI_2_5_FLASH]: Provider.GEMINI,
+  [Models.GEMINI_2_5_FLASH_IMAGE]: Provider.GEMINI,
   [Models.GEMINI_3]: Provider.GEMINI,
 
   // OpenRouter
   [Models.GEMINI_2_5_FLASH_OPENROUTER]: Provider.OPENROUTER,
+  [Models.GEMINI_2_5_FLASH_IMAGE_PREVIEW]: Provider.OPENROUTER,
   [Models.GEMINI_2_FLASH_OPENROUTER]: Provider.OPENROUTER,
   [Models.CLAUDE_SONNET_4_5]: Provider.OPENROUTER,
   [Models.CLAUDE_OPUS_4_6]: Provider.OPENROUTER,
@@ -28,6 +30,7 @@ export const MODEL_TO_PROVIDER = Object.freeze({
 
   // OpenAI (direct API)
   [Models.GPT_5_2_OPENAI]: Provider.OPENAI,
+  [Models.GPT_4_1_MINI]: Provider.OPENAI,
 
   // Anthropic (direct API)
   [Models.CLAUDE_SONNET_4_5_ANTHROPIC]: Provider.ANTHROPIC,

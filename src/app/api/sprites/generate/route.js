@@ -69,7 +69,7 @@ Output:
 /** Provider string from form -> model for image generation */
 const PROVIDER_TO_MODEL = {
   openrouter: Models.GEMINI_2_5_FLASH_IMAGE_PREVIEW,
-  gemini: Models.GEMINI_2_FLASH_IMAGE,
+  gemini: Models.GEMINI_2_5_FLASH_IMAGE,
   openai: Models.GPT_4_1_MINI,
 };
 

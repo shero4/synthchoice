@@ -184,7 +184,14 @@ function StepProgress({ steps }) {
             {getStepIcon(step)}
           </div>
           <div style={{ flex: 1 }}>
-            <Text strong>{step.title}</Text>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Text strong>{step.title}</Text>
+              {step.durationMs != null && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  ({step.durationMs}ms)
+                </Text>
+              )}
+            </div>
             {step.description && (
               <Paragraph
                 type="secondary"
@@ -253,6 +260,7 @@ export default function TestPage() {
       status: "pending",
       description: null,
       output: null,
+      durationMs: null,
     },
     {
       id: "fetch",
@@ -261,6 +269,7 @@ export default function TestPage() {
       status: "pending",
       description: null,
       output: null,
+      durationMs: null,
     },
     {
       id: "generate",
@@ -269,8 +278,12 @@ export default function TestPage() {
       status: "pending",
       description: null,
       output: null,
+      durationMs: null,
     },
   ]);
+
+  // Total pipeline duration (search mode) or single-generation duration (upload mode)
+  const [totalDurationMs, setTotalDurationMs] = useState(null);
 
   // Update a specific step
   const updateStep = (stepId, updates) => {
@@ -289,6 +302,7 @@ export default function TestPage() {
         status: "pending",
         description: null,
         output: null,
+        durationMs: null,
       },
       {
         id: "fetch",
@@ -297,6 +311,7 @@ export default function TestPage() {
         status: "pending",
         description: null,
         output: null,
+        durationMs: null,
       },
       {
         id: "generate",
@@ -305,8 +320,10 @@ export default function TestPage() {
         status: "pending",
         description: null,
         output: null,
+        durationMs: null,
       },
     ]);
+    setTotalDurationMs(null);
   };
 
   // Handle file selection
@@ -330,8 +347,10 @@ export default function TestPage() {
 
     setLoading(true);
     setError(null);
+    setTotalDurationMs(null);
 
     try {
+      const startTime = performance.now();
       const formData = new FormData();
       formData.append("logo", logoFile);
       formData.append("provider", provider);
@@ -340,6 +359,7 @@ export default function TestPage() {
       formData.append("generateGif", generateGif.toString());
 
       const data = await generateSprite(formData);
+      const durationMs = Math.round(performance.now() - startTime);
 
       if (data.error) {
         throw new Error(data.error);
@@ -349,6 +369,7 @@ export default function TestPage() {
       setSpriteSheet(data.spriteSheet);
       setGifImage(data.gif);
       setMetadata(data.metadata);
+      setTotalDurationMs(durationMs);
 
       message.success("Sprite generated successfully!");
     } catch (err) {
@@ -373,16 +394,21 @@ export default function TestPage() {
     setRawImage(null);
     setGifImage(null);
     setMetadata(null);
+    setTotalDurationMs(null);
     resetPipeline();
+
+    const pipelineStartTime = performance.now();
 
     try {
       // Step 1: Search for product
+      const step1Start = performance.now();
       updateStep("search", {
         status: "loading",
         description: `Searching for "${productQuery}"...`,
       });
 
       const searchResult = await searchProduct(productQuery);
+      const step1Duration = Math.round(performance.now() - step1Start);
 
       if (searchResult.error) {
         updateStep("search", {
@@ -395,9 +421,9 @@ export default function TestPage() {
       updateStep("search", {
         status: "complete",
         description: `Found: ${searchResult.productName} (${searchResult.confidence} confidence)`,
+        durationMs: step1Duration,
         output: (
           <div>
-            {console.log({searchResult})}
             <Text strong>Sprite Description:</Text>
             <Paragraph style={{ marginBottom: 8 }}>
               {searchResult.spriteDescription}
@@ -436,12 +462,14 @@ export default function TestPage() {
       }
 
       // Step 2: Fetch the image
+      const step2Start = performance.now();
       updateStep("fetch", {
         status: "loading",
         description: "Downloading product image...",
       });
 
       const fetchResult = await fetchProductImage(searchResult.imageUrl);
+      const step2Duration = Math.round(performance.now() - step2Start);
 
       if (fetchResult.error) {
         updateStep("fetch", {
@@ -457,6 +485,7 @@ export default function TestPage() {
       updateStep("fetch", {
         status: "complete",
         description: "Image downloaded successfully",
+        durationMs: step2Duration,
         output: (
           <Image
             src={fetchResult.imageDataUrl}
@@ -468,6 +497,7 @@ export default function TestPage() {
       });
 
       // Step 3: Generate sprite
+      const step3Start = performance.now();
       updateStep("generate", {
         status: "loading",
         description: `Generating sprite with ${provider}...`,
@@ -492,6 +522,10 @@ export default function TestPage() {
       setRawImage(spriteResult.rawImage);
       setSpriteSheet(spriteResult.spriteSheet);
       setGifImage(spriteResult.gif);
+      const step3Duration = Math.round(performance.now() - step3Start);
+      const totalDuration = Math.round(performance.now() - pipelineStartTime);
+      setTotalDurationMs(totalDuration);
+
       setMetadata({
         ...spriteResult.metadata,
         productName: searchResult.productName,
@@ -501,6 +535,7 @@ export default function TestPage() {
       updateStep("generate", {
         status: "complete",
         description: "Sprite generated successfully!",
+        durationMs: step3Duration,
         output: (
           <Image
             src={spriteResult.spriteSheet}
@@ -891,6 +926,9 @@ export default function TestPage() {
                           Generated with {metadata.provider} • Grid:{" "}
                           {metadata.grid} • Frame: {metadata.frameSize}px •
                           Total: {metadata.totalSize}
+                          {totalDurationMs != null && (
+                            <> • Total time: {totalDurationMs}ms</>
+                          )}
                         </Text>
                       </div>
                     )}
