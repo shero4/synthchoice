@@ -31,6 +31,7 @@ import {
   getRuns,
   deleteExperiment,
 } from "@/lib/firebase/db";
+import { Statistic } from "antd";
 
 const { Text } = Typography;
 

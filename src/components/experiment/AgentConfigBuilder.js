@@ -179,7 +179,7 @@ export function AgentConfigBuilder({ config = {}, onChange }) {
   const archetypes = Object.values(BEHAVIORAL_ARCHETYPES);
 
   return (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
       {/* Summary Card */}
       <Card>
         <Row gutter={24} align="middle">
@@ -253,7 +253,7 @@ export function AgentConfigBuilder({ config = {}, onChange }) {
                 checked={currentConfig.selectedModels.includes(model.id)}
                 onChange={() => toggleSelection("selectedModels", model.id)}
               >
-                <Space direction="vertical" size={0}>
+                <Space orientation="vertical" size={0}>
                   <Text strong>{model.label}</Text>
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {model.description}
@@ -292,7 +292,7 @@ export function AgentConfigBuilder({ config = {}, onChange }) {
           </Space>
         }
       >
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
           {/* MBTI Personalities */}
           <div>
             <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
@@ -353,7 +353,7 @@ export function AgentConfigBuilder({ config = {}, onChange }) {
                       toggleSelection("selectedPersonalities", archetype.id)
                     }
                   >
-                    <Space direction="vertical" size={0}>
+                    <Space orientation="vertical" size={0}>
                       <Text strong>{archetype.label}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {archetype.description}
@@ -440,7 +440,7 @@ export function AgentConfigBuilder({ config = {}, onChange }) {
           </Space>
         }
       >
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
           {/* Add Custom Location */}
           <Space.Compact style={{ width: "100%", maxWidth: 400 }}>
             <Input

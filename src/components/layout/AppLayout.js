@@ -14,10 +14,18 @@ export function AppLayout({ children }) {
   const isHomePage = pathname === "/";
 
   return (
-    <div style={{ minHeight: "100vh", background: isHomePage ? "transparent" : "#f5f5f5" }}>
+    <div 
+      style={{ 
+        minHeight: "100vh", 
+        background: isHomePage ? "transparent" : "#f8fafc",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <AppHeader transparent={isHomePage} />
       <main
         style={{
+          flex: 1,
           paddingTop: isHomePage ? 0 : 24,
           paddingBottom: isHomePage ? 0 : 24,
           paddingLeft: isHomePage ? 0 : 48,
@@ -38,16 +46,17 @@ export function AppLayout({ children }) {
         <footer
           style={{
             textAlign: "center",
-            background: "#0a0a1a",
+            background: "#0f172a",
             color: "rgba(255,255,255,0.65)",
-            padding: "32px 48px",
+            padding: "24px 48px",
+            marginTop: "auto",
           }}
         >
-          <Space direction="vertical" size={8}>
-            <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>
+          <Space orientation="vertical" size={4}>
+            <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: 600, fontSize: 14 }}>
               SynthChoice
             </Text>
-            <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
+            <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>
               Simulate minds. Predict decisions.
             </Text>
           </Space>

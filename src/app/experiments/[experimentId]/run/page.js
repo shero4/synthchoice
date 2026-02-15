@@ -378,7 +378,7 @@ export default function RunnerPage() {
       case PageState.RUNNING:
         return (
           <Card size="small">
-            <Space direction="vertical" style={{ width: "100%" }} size={8}>
+            <Space orientation="vertical" style={{ width: "100%" }} size={8}>
               <Space
                 style={{ width: "100%", justifyContent: "space-between" }}
                 align="center"

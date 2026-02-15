@@ -305,7 +305,7 @@ Plain text:
 - has_warranty: yes/no`;
 
   return (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
       {/* AI Parse Section */}
       <Card size="small">
         <Collapse
@@ -322,7 +322,7 @@ Plain text:
                 </Space>
               ),
               children: (
-                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
                   <Alert
                     type="info"
                     showIcon
