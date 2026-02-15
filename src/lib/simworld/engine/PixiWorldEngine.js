@@ -529,14 +529,20 @@ export class PixiWorldEngine {
       this.removeStation(stationId);
     }
 
-    if (this.app) {
-      this.app.destroy(true, {
-        children: true,
-        texture: true,
-        textureSource: true,
-      });
-      this.app = null;
+    // Only call app.destroy() if the app has finished initializing.
+    // Calling destroy() on a partially initialized app causes errors.
+    if (this.app && this.ready) {
+      try {
+        this.app.destroy(true, {
+          children: true,
+          texture: true,
+          textureSource: true,
+        });
+      } catch (err) {
+        console.warn("PixiWorldEngine: Error during app.destroy():", err);
+      }
     }
+    this.app = null;
 
     if (this.containerElement) {
       this.containerElement.innerHTML = "";
