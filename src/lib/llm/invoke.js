@@ -61,8 +61,17 @@ function isRetriable(errorType) {
  * Extract base64 and mime from data URL
  */
 function dataUrlToBase64(dataUrl) {
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) throw new Error("Invalid data URL format");
+  // Handle data URLs with optional parameters like charset
+  const match = dataUrl.match(/^data:([^;,]+)[^,]*;base64,(.+)$/);
+  if (!match) {
+    // Check if it's a plain URL (not a data URL)
+    if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
+      throw new Error(
+        "Expected base64 data URL but got HTTP URL. Image must be fetched and converted first.",
+      );
+    }
+    throw new Error("Invalid data URL format");
+  }
   return { mime: match[1], base64: match[2] };
 }
 
@@ -118,7 +127,11 @@ async function callOpenRouter(apiKey, modelId, messages, options) {
   }
 
   if (!res.ok) {
-    const errType = classifyError(data, res.status, data?.error?.message || text);
+    const errType = classifyError(
+      data,
+      res.status,
+      data?.error?.message || text,
+    );
     throw Object.assign(new Error(data?.error?.message || text), {
       errorType: errType,
       statusCode: res.status,
@@ -155,7 +168,9 @@ async function callGemini(apiKey, modelId, messages, options) {
   const parts = [];
   for (const msg of messages) {
     if (msg.role !== "user") continue;
-    const content = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
+    const content = Array.isArray(msg.content)
+      ? msg.content
+      : [{ type: "text", text: msg.content }];
     for (const part of content) {
       if (part.type === "text" && part.text) {
         parts.push({ text: part.text });
@@ -180,7 +195,7 @@ async function callGemini(apiKey, modelId, messages, options) {
     contents: [{ role: "user", parts }],
     generationConfig,
   };
-  
+
   // Add system instruction if present
   if (systemInstruction) {
     requestBody.systemInstruction = { parts: [{ text: systemInstruction }] };
@@ -209,7 +224,7 @@ async function callGemini(apiKey, modelId, messages, options) {
     const errType = classifyError(
       data,
       res.status,
-      data?.error?.message || text
+      data?.error?.message || text,
     );
     throw Object.assign(new Error(data?.error?.message || text), {
       errorType: errType,
@@ -293,7 +308,7 @@ async function callOpenAI(apiKey, modelId, messages, options) {
       const errType = classifyError(
         data,
         res.status,
-        data?.error?.message || text
+        data?.error?.message || text,
       );
       throw Object.assign(new Error(data?.error?.message || text), {
         errorType: errType,
@@ -339,7 +354,11 @@ async function callOpenAI(apiKey, modelId, messages, options) {
   }
 
   if (!res.ok) {
-    const errType = classifyError(data, res.status, data?.error?.message || text);
+    const errType = classifyError(
+      data,
+      res.status,
+      data?.error?.message || text,
+    );
     throw Object.assign(new Error(data?.error?.message || text), {
       errorType: errType,
       statusCode: res.status,
@@ -365,7 +384,8 @@ async function callAnthropic(apiKey, modelId, messages, options) {
     const c = msg.content;
     if (Array.isArray(c)) {
       for (const part of c) {
-        if (part.type === "text") anthropicContent.push({ type: "text", text: part.text });
+        if (part.type === "text")
+          anthropicContent.push({ type: "text", text: part.text });
         if (part.type === "image_url" && part.image_url?.url) {
           const { mime, base64 } = dataUrlToBase64(part.image_url.url);
           anthropicContent.push({
@@ -386,19 +406,16 @@ async function callAnthropic(apiKey, modelId, messages, options) {
     messages: [{ role: "user", content: anthropicContent }],
   };
 
-  const res = await fetch(
-    "https://api.anthropic.com/v1/messages",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    }
-  );
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
 
   const text = await res.text();
   let data;
@@ -412,7 +429,7 @@ async function callAnthropic(apiKey, modelId, messages, options) {
     const errType = classifyError(
       data,
       res.status,
-      data?.error?.message || text
+      data?.error?.message || text,
     );
     throw Object.assign(new Error(data?.error?.message || text), {
       errorType: errType,
@@ -497,7 +514,7 @@ export async function invoke_llm(model, messages, options = {}) {
       }
 
       console.warn(
-        `[invoke_llm] [${model}] Retry ${retries + 1}/${maxRetries} after ${errorType}: ${err.message}`
+        `[invoke_llm] [${model}] Retry ${retries + 1}/${maxRetries} after ${errorType}: ${err.message}`,
       );
     }
   }

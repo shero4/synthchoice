@@ -9,3 +9,8 @@ export {
   getApiKeyForProvider,
 } from "./providers";
 export { invoke_llm } from "./invoke";
+export {
+  searchProductForSprite,
+  fetchImageAsDataUrl,
+  searchAndFetchProductImage,
+} from "./websearch-agent";
