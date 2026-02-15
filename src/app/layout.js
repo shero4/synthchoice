@@ -5,9 +5,26 @@ import { AppLayout } from "@/components/layout";
 import "./globals.css";
 
 export const metadata = {
+  metadataBase: new URL("https://synthchoice.vercel.app"),
   title: "SynthChoice - Simulate minds, Predict decisions",
   description:
     "A choice-based experiment simulator for conjoint analysis and decision modeling",
+  icons: {
+    icon: "/readme/icon.png",
+  },
+  openGraph: {
+    title: "SynthChoice - Simulate minds, Predict decisions",
+    description:
+      "A choice-based experiment simulator for conjoint analysis and decision modeling",
+    images: ["/readme/1.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SynthChoice - Simulate minds, Predict decisions",
+    description:
+      "A choice-based experiment simulator for conjoint analysis and decision modeling",
+    images: ["/readme/1.png"],
+  },
 };
 
 // Modern Ant Design theme configuration
