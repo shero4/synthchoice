@@ -52,7 +52,7 @@ export function RunnerController({
   const features = experiment?.featureSchema?.features || [];
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       {/* Control buttons */}
       <Card>
         <Space style={{ width: "100%", justifyContent: "space-between" }}>
@@ -138,7 +138,7 @@ export function RunnerController({
               <AgentSprite agent={currentAgent} size="large" isActive />
             </Col>
             <Col>
-              <Space direction="vertical" size={0}>
+              <Space orientation="vertical" size={0}>
                 <Text strong>{currentAgent.label}</Text>
                 <Text type="secondary">
                   {currentAgent.traits?.location || "Unknown location"}

@@ -55,7 +55,7 @@ export function ValidationPanel({
         {/* Holdout Accuracy */}
         <Col span={12}>
           <Card size="small">
-            <Space direction="vertical" style={{ width: "100%" }}>
+            <Space orientation="vertical" style={{ width: "100%" }}>
               <Space>
                 <Title level={5} style={{ margin: 0 }}>
                   Holdout Accuracy
@@ -85,7 +85,7 @@ export function ValidationPanel({
         {/* Repeat Consistency */}
         <Col span={12}>
           <Card size="small">
-            <Space direction="vertical" style={{ width: "100%" }}>
+            <Space orientation="vertical" style={{ width: "100%" }}>
               <Space>
                 <Title level={5} style={{ margin: 0 }}>
                   Repeat Consistency

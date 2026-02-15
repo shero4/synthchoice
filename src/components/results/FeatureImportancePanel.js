@@ -46,14 +46,14 @@ export function FeatureImportancePanel({ importance, features = [] }) {
         </Space>
       }
     >
-      <Space direction="vertical" style={{ width: "100%" }} size="large">
+      <Space orientation="vertical" style={{ width: "100%" }} size="large">
         {/* Overall importance */}
         <div>
           <Title level={5}>Overall</Title>
           {sortedFeatures.length === 0 ? (
             <Text type="secondary">No data available</Text>
           ) : (
-            <Space direction="vertical" style={{ width: "100%" }}>
+            <Space orientation="vertical" style={{ width: "100%" }}>
               {sortedFeatures.map(([key, value]) => (
                 <div key={key}>
                   <Row justify="space-between" align="middle">

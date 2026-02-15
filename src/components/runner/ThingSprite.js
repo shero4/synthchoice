@@ -61,7 +61,7 @@ export function ThingSprite({
         transition: "all 0.2s",
       }}
     >
-      <Space direction="vertical" style={{ width: "100%" }}>
+      <Space orientation="vertical" style={{ width: "100%" }}>
         <Space style={{ justifyContent: "space-between", width: "100%" }}>
           <Title level={5} style={{ margin: 0 }}>
             {alternative?.name || "Alternative"}

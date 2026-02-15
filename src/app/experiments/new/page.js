@@ -218,7 +218,7 @@ export default function NewExperimentPage() {
 
       case 2: // Alternatives
         return (
-          <Space direction="vertical" size="large" style={{ width: "100%" }}>
+          <Space orientation="vertical" size="large" style={{ width: "100%" }}>
             <AlternativesInput
               value={rawInput}
               onChange={setRawInput}
@@ -268,7 +268,7 @@ export default function NewExperimentPage() {
               icon={<CheckCircleOutlined />}
               title="Ready to create experiment"
               subTitle={
-                <Space direction="vertical">
+                <Space orientation="vertical">
                   <span>
                     <strong>Name:</strong> {draft.name || "Untitled"}
                   </span>

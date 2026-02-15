@@ -60,7 +60,7 @@ export function ProgressBar({
 
   return (
     <Card>
-      <Space direction="vertical" style={{ width: "100%" }}>
+      <Space orientation="vertical" style={{ width: "100%" }}>
         <Progress
           percent={percent}
           status={getStatusColor()}

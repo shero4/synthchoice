@@ -94,7 +94,7 @@ export function AgentSprite({
   }
 
   return (
-    <Space direction="vertical" align="center" size={4}>
+    <Space orientation="vertical" align="center" size={4}>
       {wrappedAvatar}
       <Text
         type={isActive ? undefined : "secondary"}

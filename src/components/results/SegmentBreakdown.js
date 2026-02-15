@@ -59,7 +59,7 @@ export function SegmentBreakdown({
       dataIndex: "label",
       key: "label",
       render: (text, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text strong>{text}</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {record.count} agents
@@ -71,7 +71,7 @@ export function SegmentBreakdown({
       title: "Traits",
       key: "traits",
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text>{record.location}</Text>
           <Text type="secondary">{record.personality}</Text>
           {record.priceSensitivity !== undefined && (
@@ -86,7 +86,7 @@ export function SegmentBreakdown({
       title: "Top Choice",
       key: "topChoice",
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text strong>{record.topChoice}</Text>
           <Text type="secondary">
             {(record.topChoiceShare * 100).toFixed(1)}% share
@@ -98,7 +98,7 @@ export function SegmentBreakdown({
       title: "Top Feature",
       key: "topFeature",
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text strong>{record.topFeature}</Text>
           <Text type="secondary">
             {(record.topFeatureImportance * 100).toFixed(1)}% importance

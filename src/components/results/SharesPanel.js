@@ -41,14 +41,14 @@ export function SharesPanel({ shares, alternatives = [], title = "Choice Shares"
         </Space>
       }
     >
-      <Space direction="vertical" style={{ width: "100%" }} size="large">
+      <Space orientation="vertical" style={{ width: "100%" }} size="large">
         {/* Overall shares */}
         <div>
           <Title level={5}>Overall</Title>
           {Object.entries(overallShares).length === 0 ? (
             <Text type="secondary">No data available</Text>
           ) : (
-            <Space direction="vertical" style={{ width: "100%" }}>
+            <Space orientation="vertical" style={{ width: "100%" }}>
               {Object.entries(overallShares).map(([altId, share], index) => (
                 <div key={altId}>
                   <Row justify="space-between" align="middle">

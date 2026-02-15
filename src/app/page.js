@@ -76,7 +76,7 @@ export default function HomePage() {
     <div>
       {/* Hero section */}
       <Card style={{ marginBottom: 24 }}>
-        <Space direction="vertical" size="small">
+        <Space orientation="vertical" size="small">
           <Title level={2} style={{ margin: 0 }}>
             Welcome to SynthChoice
           </Title>
@@ -123,16 +123,10 @@ export default function HomePage() {
             renderItem={(experiment) => (
               <List.Item
                 actions={[
-                  <Link
-                    key="view"
-                    href={`/experiments/${experiment.id}`}
-                  >
+                  <Link key="view" href={`/experiments/${experiment.id}`}>
                     <Button>View</Button>
                   </Link>,
-                  <Link
-                    key="run"
-                    href={`/experiments/${experiment.id}/run`}
-                  >
+                  <Link key="run" href={`/experiments/${experiment.id}/run`}>
                     <Button icon={<PlayCircleOutlined />}>Run</Button>
                   </Link>,
                 ]}
@@ -154,15 +148,14 @@ export default function HomePage() {
                     </Space>
                   }
                   description={
-                    <Space direction="vertical" size={0}>
+                    <Space orientation="vertical" size={0}>
                       <Text type="secondary">
                         {experiment.description || "No description"}
                       </Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {experiment.agentPlan?.totalAgents || 0} agents •{" "}
                         {experiment.featureSchema?.features?.length || 0}{" "}
-                        features •{" "}
-                        {experiment.choiceFormat || "AB"} format
+                        features • {experiment.choiceFormat || "AB"} format
                       </Text>
                     </Space>
                   }

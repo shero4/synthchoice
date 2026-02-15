@@ -32,7 +32,7 @@ export function TaskPreview({
 
   return (
     <Card>
-      <Space direction="vertical" style={{ width: "100%" }}>
+      <Space orientation="vertical" style={{ width: "100%" }}>
         <Title level={4} style={{ textAlign: "center", margin: 0 }}>
           Which option would you choose?
         </Title>
