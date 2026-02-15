@@ -189,6 +189,7 @@ export class SimWorldRuntime {
         persona: personality.persona || "General",
         segment: personality.segment || "default",
         color: personality.color || this._pickColor(characterCount),
+        position: personality.position || null,
       },
       SPAWN_POINT,
     );
@@ -328,6 +329,27 @@ export class SimWorldRuntime {
       optionId: option.id,
       previousOptionId,
     };
+  }
+
+  // ----------------------------------------------------------------
+  // Thinking indicator
+  // ----------------------------------------------------------------
+
+  /**
+   * Show a persistent thinking indicator (speech bubble with "...") on a sprite.
+   * Stays visible until clearThinking() is called.
+   */
+  showThinking(spriteId) {
+    this.engine.showSpeechBubble(spriteId, "...", 999_999);
+    this._emitAction(spriteId, "thinking.start", { message: "Thinking..." });
+  }
+
+  /**
+   * Clear the thinking indicator from a sprite.
+   */
+  clearThinking(spriteId) {
+    this.engine.clearSpeechBubble(spriteId);
+    this._emitAction(spriteId, "thinking.end", { message: "Done thinking." });
   }
 
   /**

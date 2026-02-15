@@ -2,9 +2,12 @@
 
 import {
   ArrowRightOutlined,
+  BulbOutlined,
   CheckCircleOutlined,
+  LoadingOutlined,
   LogoutOutlined,
   MessageOutlined,
+  ThunderboltOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { Badge, Card, Collapse, Empty, List, Tag, Typography } from "antd";
@@ -17,6 +20,12 @@ const ACTION_ICONS = {
   pick: <CheckCircleOutlined />,
   exit: <LogoutOutlined />,
   "sprite.added": <UserOutlined />,
+  "thinking.start": <LoadingOutlined />,
+  "thinking.end": <BulbOutlined />,
+  "agent.spawned": <UserOutlined />,
+  "agent.processing": <LoadingOutlined />,
+  "agent.decided": <ThunderboltOutlined />,
+  "sprite.removed": <LogoutOutlined />,
 };
 
 const ACTION_COLORS = {
@@ -25,6 +34,12 @@ const ACTION_COLORS = {
   pick: "gold",
   exit: "red",
   "sprite.added": "purple",
+  "thinking.start": "processing",
+  "thinking.end": "cyan",
+  "agent.spawned": "purple",
+  "agent.processing": "processing",
+  "agent.decided": "orange",
+  "sprite.removed": "default",
 };
 
 function formatTime(timestamp) {
@@ -54,6 +69,30 @@ function ActionItem({ action }) {
       break;
     case "sprite.added":
       description = `Joined as ${action.detail?.persona || "Agent"}`;
+      break;
+    case "thinking.start":
+      description = "Thinking...";
+      break;
+    case "thinking.end":
+      description = "Done thinking";
+      break;
+    case "agent.spawned":
+      description = `Spawned: ${action.detail?.name || "Agent"}`;
+      break;
+    case "agent.processing":
+      description = `Processing: ${action.detail?.name || "Agent"}`;
+      break;
+    case "agent.decided": {
+      const chosen = action.detail?.chosen || "?";
+      const conf = action.detail?.confidence;
+      const confStr = conf !== undefined ? ` (${Math.round(conf * 100)}%)` : "";
+      description = action.detail?.error
+        ? `Error: ${action.detail.error}`
+        : `Chose ${chosen}${confStr}`;
+      break;
+    }
+    case "sprite.removed":
+      description = "Left the world";
       break;
     default:
       description = action.type;

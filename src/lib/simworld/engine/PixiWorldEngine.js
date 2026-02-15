@@ -221,16 +221,14 @@ export class PixiWorldEngine {
 
     this.removeStation(station.id);
 
-    const tilesetTexture = this.assets?.tileset;
-
-    if (station.shopType && tilesetTexture) {
-      // Create a proper building from the tileset
+    if (station.shopType) {
+      // Create a proper building (procedural — works with or without tileset)
       const building = createBuilding(
         station.shopType,
         { x: station.x, y: station.y },
         station.label || station.id,
-        tilesetTexture,
-        this.assets.tilesetHouses,
+        this.assets?.tileset || null,
+        this.assets?.tilesetHouses || null,
       );
       this.layers.buildings.addChild(building);
       const entry = { container: building, station, overlay: null };

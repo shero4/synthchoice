@@ -362,24 +362,24 @@ export const MODEL_PRESETS = Object.freeze([
     modelTag: "google/gemini-2.5-flash",
   },
   {
-    id: "gemini_2_flash",
+    id: "gemini_2_0_flash",
     label: "Gemini 2.0 Flash",
-    description: "Fast and capable",
-    modelTag: "google/gemini-2.0-flash",
+    description: "Fast and capable (via OpenRouter)",
+    modelTag: "google/gemini-2.0-flash-001",
   },
 
   // Claude
   {
-    id: "claude_sonnet_4_5",
-    label: "Claude Sonnet 4.5",
+    id: "claude_sonnet_4",
+    label: "Claude Sonnet 4",
     description: "Best balance of speed and intelligence",
-    modelTag: "anthropic/claude-sonnet-4.5",
+    modelTag: "anthropic/claude-sonnet-4",
   },
   {
-    id: "claude_opus_4_6",
-    label: "Claude Opus 4.6",
+    id: "claude_opus_4",
+    label: "Claude Opus 4",
     description: "Most intelligent, complex tasks",
-    modelTag: "anthropic/claude-opus-4.6",
+    modelTag: "anthropic/claude-opus-4",
   },
   {
     id: "claude_haiku_4_5",
@@ -390,16 +390,16 @@ export const MODEL_PRESETS = Object.freeze([
 
   // GPT
   {
-    id: "gpt_5_3_codex",
-    label: "GPT-5.3 Codex",
-    description: "OpenAI's latest, self-improving",
-    modelTag: "openai/gpt-5.3-codex",
+    id: "gpt_5",
+    label: "GPT-5",
+    description: "400K context, complex reasoning",
+    modelTag: "openai/gpt-5",
   },
   {
-    id: "gpt_5_2",
-    label: "GPT-5.2",
-    description: "400K context window",
-    modelTag: "openai/gpt-5.2",
+    id: "gpt_5_mini",
+    label: "GPT-5 Mini",
+    description: "Cost-optimized, balanced performance",
+    modelTag: "openai/gpt-5-mini",
   },
 ]);
 
