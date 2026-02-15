@@ -1,36 +1,36 @@
 /**
  * Simple Product Image Search Agent
  *
- * 1. Uses Claude to generate a sprite description from product name
+ * 1. Uses LLM (invoke_llm) to generate a sprite description from product name
  * 2. Searches for "[product] clip art image" using DuckDuckGo
- * 3. Returns the first image result + sprite description
+ * 3. Returns image URLs + sprite description; tries multiple URLs for reliability
  *
  * Input: product name/description/brand name
- * Output: { imageUrl, spriteDescription }
+ * Output: { imageUrl, imageUrls, spriteDescription }
  */
 
-import { getApiKeyForProvider, Provider } from "./providers";
+import { invoke_llm } from "./invoke";
+import { Models } from "./models";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const IMAGE_FETCH_RETRIES = 2;
+const IMAGE_FETCH_RETRY_DELAY_MS = 1000;
+
+/** Models to try for sprite description (first available wins) */
+const SPRITE_DESC_MODELS = [
+  Models.GEMINI_2_5_FLASH,
+  Models.GEMINI_2_5_FLASH_OPENROUTER,
+  Models.CLAUDE_HAIKU_4_5_ANTHROPIC,
+];
 
 /**
- * Generate a sprite description using Claude (no web search, just text)
+ * Generate a sprite description using invoke_llm (tries configured providers)
  */
-async function generateSpriteDescription(apiKey, productName) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-3-5-haiku-20241022",
-      max_tokens: 256,
-      messages: [
-        {
-          role: "user",
-          content: `Generate a brief sprite description for pixel art of: "${productName}"
+async function generateSpriteDescription(productName) {
+  const messages = [
+    {
+      role: "user",
+      content: `Generate a brief sprite description for pixel art of: "${productName}"
 
 Describe the visual essence in 2-3 sentences. Focus on:
 - Shape and silhouette
@@ -39,22 +39,23 @@ Describe the visual essence in 2-3 sentences. Focus on:
 - What makes it recognizable at small sizes
 
 Respond with ONLY the description, no preamble.`,
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+    },
+  ];
 
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(
-      data?.error?.message || `Anthropic API error: ${res.status}`,
-    );
+  for (const model of SPRITE_DESC_MODELS) {
+    try {
+      const result = await invoke_llm(model, messages, {
+        maxRetries: 1,
+        maxTokens: 256,
+      });
+      const text = result?.content?.trim();
+      if (text) return text;
+    } catch (err) {
+      console.warn(`Sprite description (${model}) failed:`, err.message);
+    }
   }
 
-  const text = data.content?.[0]?.text || "";
-  return text.trim();
+  return `A pixel art representation of ${productName}`;
 }
 
 /**
@@ -113,14 +114,15 @@ async function searchDuckDuckGoImages(query) {
     return null;
   }
 
-  // Return the first image result
-  const firstResult = imagesData.results[0];
-  return {
-    imageUrl: firstResult.image,
-    thumbnail: firstResult.thumbnail,
-    title: firstResult.title,
-    source: firstResult.source,
-  };
+  // Return multiple results for reliability (try each until one fetches)
+  const results = imagesData.results.slice(0, 8).map((r) => ({
+    imageUrl: r.image,
+    thumbnail: r.thumbnail,
+    title: r.title,
+    source: r.source,
+  }));
+
+  return results;
 }
 
 /**
@@ -147,16 +149,19 @@ async function searchGoogleImagesFallback(query) {
   );
 
   if (imgMatches && imgMatches.length > 0) {
-    // Extract the URL from the first match
-    const urlMatch = imgMatches[0].match(/"(https:\/\/[^"]+)"/);
-    if (urlMatch) {
-      return {
-        imageUrl: urlMatch[1],
-        thumbnail: null,
-        title: query,
-        source: "google",
-      };
+    const results = [];
+    for (let i = 0; i < Math.min(5, imgMatches.length); i++) {
+      const urlMatch = imgMatches[i].match(/"(https:\/\/[^"]+)"/);
+      if (urlMatch) {
+        results.push({
+          imageUrl: urlMatch[1],
+          thumbnail: null,
+          title: query,
+          source: "google",
+        });
+      }
     }
+    return results.length > 0 ? results : null;
   }
 
   return null;
@@ -164,25 +169,24 @@ async function searchGoogleImagesFallback(query) {
 
 /**
  * Search for product image using query + "clip art image"
+ * Returns array of { imageUrl, ... } for multiple fetch attempts
  */
 async function searchProductImage(productName) {
   const query = `${productName} clip art image png transparent`;
 
   try {
-    // Try DuckDuckGo first
-    const result = await searchDuckDuckGoImages(query);
-    if (result) {
-      return result;
+    const results = await searchDuckDuckGoImages(query);
+    if (results && results.length > 0) {
+      return results;
     }
   } catch (err) {
     console.warn("DuckDuckGo search failed:", err.message);
   }
 
   try {
-    // Fallback to Google
-    const result = await searchGoogleImagesFallback(query);
-    if (result) {
-      return result;
+    const results = await searchGoogleImagesFallback(query);
+    if (results && results.length > 0) {
+      return results;
     }
   } catch (err) {
     console.warn("Google fallback search failed:", err.message);
@@ -211,92 +215,127 @@ export async function searchProductForSprite(productQuery, _options = {}) {
 
   const productName = productQuery.trim();
 
-  // Step 1: Generate sprite description using Claude
+  // Step 1: Generate sprite description using LLM (tries Gemini, OpenRouter, Anthropic)
   let spriteDescription = "";
   try {
-    const apiKey = getApiKeyForProvider(Provider.ANTHROPIC);
-    spriteDescription = await generateSpriteDescription(apiKey, productName);
+    spriteDescription = await generateSpriteDescription(productName);
   } catch (err) {
     console.warn("Failed to generate sprite description:", err.message);
     spriteDescription = `A pixel art representation of ${productName}`;
   }
 
-  // Step 2: Search for clip art image
-  let imageResult = null;
+  // Step 2: Search for clip art image (returns multiple URLs for reliability)
+  let imageResults = null;
   try {
-    imageResult = await searchProductImage(productName);
+    imageResults = await searchProductImage(productName);
   } catch (err) {
     console.warn("Image search failed:", err.message);
   }
 
+  const imageUrls = imageResults?.map((r) => r.imageUrl).filter(Boolean) ?? [];
+
   return {
-    imageUrl: imageResult?.imageUrl || null,
+    imageUrl: imageUrls[0] || null,
+    imageUrls,
     spriteDescription,
     productName,
-    confidence: imageResult ? "medium" : "low",
-    searchResults: imageResult
-      ? [
-          {
-            title: imageResult.title || productName,
-            url: imageResult.imageUrl,
-            snippet: `Source: ${imageResult.source || "image search"}`,
-          },
-        ]
-      : [],
+    confidence: imageUrls.length > 0 ? "medium" : "low",
+    searchResults: imageResults?.slice(0, 5).map((r) => ({
+      title: r.title || productName,
+      url: r.imageUrl,
+      snippet: `Source: ${r.source || "image search"}`,
+    })) ?? [],
   };
 }
 
 /**
- * Download image from URL and convert to base64 data URL
+ * Download image from URL and convert to base64 data URL (with retries)
  */
-export async function fetchImageAsDataUrl(imageUrl) {
+export async function fetchImageAsDataUrl(imageUrl, options = {}) {
   if (!imageUrl) {
     throw new Error("imageUrl is required");
   }
 
-  const res = await fetch(imageUrl, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "image/*",
-    },
-    signal: AbortSignal.timeout(30_000),
-  });
+  const { retries = IMAGE_FETCH_RETRIES } = options;
+  let lastError;
 
-  if (!res.ok) {
-    throw new Error(`Failed to fetch image: ${res.status}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(imageUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "image/*",
+          Referer: "https://www.google.com/",
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch image: ${res.status}`);
+      }
+
+      let contentType = res.headers.get("content-type") || "image/png";
+      contentType = contentType.split(";")[0].trim();
+      if (!contentType.startsWith("image/")) {
+        contentType = "image/png";
+      }
+
+      const buffer = await res.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString("base64");
+      return `data:${contentType};base64,${base64}`;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, IMAGE_FETCH_RETRY_DELAY_MS));
+      }
+    }
   }
 
-  // Get content type and strip any extra parameters (e.g., "image/png; charset=utf-8" -> "image/png")
-  let contentType = res.headers.get("content-type") || "image/png";
-  contentType = contentType.split(";")[0].trim();
+  throw lastError;
+}
 
-  // Ensure it's a valid image type
-  if (!contentType.startsWith("image/")) {
-    contentType = "image/png";
+/**
+ * Try fetching from multiple URLs; returns first successful data URL
+ */
+export async function fetchImageFromUrls(imageUrls) {
+  if (!imageUrls?.length) {
+    throw new Error("imageUrls is required and must be non-empty");
   }
 
-  const buffer = await res.arrayBuffer();
-  const base64 = Buffer.from(buffer).toString("base64");
+  const errors = [];
+  for (const url of imageUrls) {
+    try {
+      return await fetchImageAsDataUrl(url);
+    } catch (err) {
+      errors.push({ url, error: err.message });
+      console.warn(`Image fetch failed for ${url.slice(0, 50)}...:`, err.message);
+    }
+  }
 
-  return `data:${contentType};base64,${base64}`;
+  throw new Error(
+    `All ${imageUrls.length} image URLs failed. Last: ${errors[errors.length - 1]?.error}`,
+  );
 }
 
 /**
  * Complete workflow: search for product and fetch image as data URL
+ * Tries all imageUrls until one succeeds
  */
 export async function searchAndFetchProductImage(productQuery, options = {}) {
   const result = await searchProductForSprite(productQuery, options);
 
   let imageDataUrl = null;
-  if (result.imageUrl) {
+  const urls = result.imageUrls?.length
+    ? result.imageUrls
+    : result.imageUrl
+      ? [result.imageUrl]
+      : [];
+  if (urls.length > 0) {
     try {
-      imageDataUrl = await fetchImageAsDataUrl(result.imageUrl);
+      imageDataUrl = await fetchImageFromUrls(urls);
     } catch (err) {
-      console.warn(
-        `Failed to fetch image from ${result.imageUrl}:`,
-        err.message,
-      );
+      console.warn("Failed to fetch image from any URL:", err.message);
     }
   }
 

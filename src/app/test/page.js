@@ -468,7 +468,9 @@ export default function TestPage() {
         description: "Downloading product image...",
       });
 
-      const fetchResult = await fetchProductImage(searchResult.imageUrl);
+      const fetchResult = await fetchProductImage(searchResult.imageUrl, {
+        imageUrls: searchResult.imageUrls ?? [],
+      });
       const step2Duration = Math.round(performance.now() - step2Start);
 
       if (fetchResult.error) {

@@ -12,5 +12,6 @@ export { invoke_llm } from "./invoke";
 export {
   searchProductForSprite,
   fetchImageAsDataUrl,
+  fetchImageFromUrls,
   searchAndFetchProductImage,
 } from "./websearch-agent";
