@@ -5,14 +5,76 @@ import { ClothedSprite } from "./ClothedSprite";
 
 // Agent personas with different clothing colors
 const AGENT_PERSONAS = [
-  { id: 1, name: "Dhruva", shirtColor: 0x3b82f6, pantsColor: 0x1e3a5f, hairColor: 0x1a1a1a },      // Blue
-  { id: 2, name: "Aditya", shirtColor: 0x8b5cf6, pantsColor: 0x4c1d95, hairColor: 0x2d1b0e },      // Purple
-  { id: 3, name: "Sitaraman", shirtColor: 0x10b981, pantsColor: 0x064e3b, hairColor: 0x1a1a1a },   // Green
-  { id: 4, name: "Priya", shirtColor: 0xf59e0b, pantsColor: 0x78350f, hairColor: 0x1a1a1a },       // Orange
-  { id: 5, name: "Jack", shirtColor: 0xec4899, pantsColor: 0x831843, hairColor: 0x2d1b0e },       // Pink
-  { id: 6, name: "Arjun", shirtColor: 0x14b8a6, pantsColor: 0x134e4a, hairColor: 0x1a1a1a },       // Teal
-  { id: 7, name: "Megan", shirtColor: 0x6366f1, pantsColor: 0x312e81, hairColor: 0x2d1b0e },       // Indigo
-  { id: 8, name: "Kathan", shirtColor: 0xef4444, pantsColor: 0x7f1d1d, hairColor: 0x1a1a1a },      // Red
+  {
+    id: 1,
+    name: "Dhruva",
+    shirtColor: 0x3b82f6,
+    pantsColor: 0x1e3a5f,
+    hairColor: 0x1a1a1a,
+  }, // Blue
+  {
+    id: 2,
+    name: "Aditya",
+    shirtColor: 0x8b5cf6,
+    pantsColor: 0x4c1d95,
+    hairColor: 0x2d1b0e,
+  }, // Purple
+  {
+    id: 3,
+    name: "Sitaraman",
+    shirtColor: 0x10b981,
+    pantsColor: 0x064e3b,
+    hairColor: 0x1a1a1a,
+  }, // Green
+  {
+    id: 4,
+    name: "Jeff Burke",
+    shirtColor: 0xf59e0b,
+    pantsColor: 0x78350f,
+    hairColor: 0x1a1a1a,
+  }, // Orange
+  {
+    id: 5,
+    name: "Irina Ghose",
+    shirtColor: 0xec4899,
+    pantsColor: 0x831843,
+    hairColor: 0x2d1b0e,
+  }, // Pink
+  {
+    id: 6,
+    name: "Hemant Mohapatra",
+    shirtColor: 0x14b8a6,
+    pantsColor: 0x134e4a,
+    hairColor: 0x1a1a1a,
+  }, // Teal
+  {
+    id: 7,
+    name: "Danny Delaney",
+    shirtColor: 0x6366f1,
+    pantsColor: 0x312e81,
+    hairColor: 0x2d1b0e,
+  }, // Indigo
+  {
+    id: 8,
+    name: "Syed Adil",
+    shirtColor: 0xef4444,
+    pantsColor: 0x7f1d1d,
+    hairColor: 0x1a1a1a,
+  }, // Red
+  {
+    id: 9,
+    name: "Beth Robertson",
+    shirtColor: 0x10b981,
+    pantsColor: 0x064e3b,
+    hairColor: 0x1a1a1a,
+  }, // Green
+  {
+    id: 10,
+    name: "Megan Ruan",
+    shirtColor: 0x6366f1,
+    pantsColor: 0x312e81,
+    hairColor: 0x2d1b0e,
+  }, // Indigo
 ];
 
 // Convert hex number to CSS color string

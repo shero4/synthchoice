@@ -92,7 +92,7 @@ export function SharesChartPanel({ shares, alternatives = [], segments = [] }) {
               outerRadius={120}
               paddingAngle={3}
               dataKey="value"
-              label={({ name, value }) => `${name} ${value}%`}
+              label={({ name, value }) => (value > 0 ? `${name} ${value}%` : null)}
               labelLine={{ stroke: "#94a3b8" }}
             >
               {pieData.map((d) => (

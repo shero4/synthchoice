@@ -214,10 +214,13 @@ function computeChoiceDrivers(responses, alternatives, features) {
   const altIds = alternatives.map((a) => a.id);
   const featureKeys = features.map((f) => f.key);
 
-  // Feature-per-alternative counts
+  // Feature-per-alternative counts (reason-code citations)
   const altFeatureCounts = {};
+  // Choice counts per alternative (regardless of reason codes)
+  const altChoiceCounts = {};
   altIds.forEach((aid) => {
     altFeatureCounts[aid] = {};
+    altChoiceCounts[aid] = 0;
     featureKeys.forEach((fk) => { altFeatureCounts[aid][fk] = 0; });
   });
 
@@ -228,13 +231,22 @@ function computeChoiceDrivers(responses, alternatives, features) {
     featureKeys.forEach((b) => { coOccurrence[a][b] = 0; });
   });
 
-  // Per-feature choose counts (how often feature X was cited AND alt Y was chosen)
   let totalResponses = 0;
+  let responsesWithReasons = 0;
 
   for (const r of responses) {
     if (r.chosen === "NONE") continue;
     totalResponses++;
+
+    // Always count the choice
+    if (altChoiceCounts[r.chosen] !== undefined) {
+      altChoiceCounts[r.chosen]++;
+    }
+
     const codes = r.reasonCodes || [];
+    if (codes.length > 0) {
+      responsesWithReasons++;
+    }
 
     codes.forEach((code) => {
       if (altFeatureCounts[r.chosen]?.[code] !== undefined) {
@@ -274,7 +286,14 @@ function computeChoiceDrivers(responses, alternatives, features) {
     }));
   });
 
-  return { altFeatureCounts, coOccurrence, heatmap, topDrivers };
+  // Coverage stats
+  const coverage = {
+    totalResponses,
+    responsesWithReasons,
+    coverageRate: totalResponses > 0 ? responsesWithReasons / totalResponses : 0,
+  };
+
+  return { altFeatureCounts, altChoiceCounts, coOccurrence, heatmap, topDrivers, coverage };
 }
 
 // ─────────────────────────────────────────────────────────────

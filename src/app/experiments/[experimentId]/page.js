@@ -301,6 +301,13 @@ export default function ExperimentDetailPage() {
           )}
         </div>
         <Space>
+          {runs.length > 0 && (
+            <Link href={`/experiments/${experimentId}/results/${runs[0].id}`}>
+              <Button icon={<BarChartOutlined />} style={{ borderRadius: 8 }}>
+                View Results
+              </Button>
+            </Link>
+          )}
           <Link href={`/experiments/${experimentId}/edit`}>
             <Button icon={<EditOutlined />} style={{ borderRadius: 8 }}>
               Edit
