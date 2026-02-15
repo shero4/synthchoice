@@ -8,7 +8,10 @@
  * All results are kept in memory. The caller saves to Firebase when ready.
  */
 
-import { getAgentDecision } from "@/app/experiments/[experimentId]/run/actions";
+import {
+  getAgentDecision,
+  generateAlternativeSprite,
+} from "@/app/experiments/[experimentId]/run/actions";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,7 +153,36 @@ export class ExperimentRunner {
       this.altToOptionId.set(alt.id, option.id);
     }
 
-    // 2. Expand segments into individual agents
+    // 2. Generate product sprites for all alternatives in parallel
+    //    (fire-and-forget: buildings appear immediately, sprites pop in when ready)
+    const spritePromises = this.alternatives.map(async (alt) => {
+      try {
+        const result = await generateAlternativeSprite(alt.name || alt.id);
+        if (result?.success && result.spriteSheetDataUrl) {
+          const optionId = this.altToOptionId.get(alt.id);
+          if (optionId) {
+            this.runtime.updateOptionVisual(optionId, {
+              spriteSheetDataUrl: result.spriteSheetDataUrl,
+              grid: result.grid,
+              frameSize: result.frameSize,
+              frameDurationMs: result.frameDurationMs,
+            });
+          }
+        } else {
+          console.warn(
+            `[ExperimentRunner] Sprite gen skipped for "${alt.name}":`,
+            result?.error,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[ExperimentRunner] Sprite gen failed for "${alt.name}":`,
+          err.message,
+        );
+      }
+    });
+
+    // 3. Expand segments into individual agents
     const segments = this.experiment?.agentPlan?.segments || [];
     const expandedAgents = expandSegmentsToAgents(segments);
 
@@ -160,44 +192,57 @@ export class ExperimentRunner {
     this._totalCount = this.agentQueue.length;
     this._completedCount = 0;
 
-    // 3. Pre-spawn ALL agents around the central fountain area
-    //    Scatter them in a cluster so they look like a crowd
+    // 4. Pre-spawn only the first batch (concurrency window) around the fountain
+    const initialBatch = Math.min(this.concurrency, this.allAgents.length);
     const cx = 656; // SPAWN_POINT.x (center of 1280 world)
     const cy = 400; // SPAWN_POINT.y (center of 800 world)
 
-    for (let i = 0; i < this.allAgents.length; i++) {
-      const agentDef = this.allAgents[i];
-
-      // Arrange in concentric rings around center
-      const ring = Math.floor(i / 8); // 8 agents per ring
-      const slot = i % 8;
-      const angle = (slot / 8) * 2 * Math.PI + ring * 0.4; // stagger each ring
-      const radius = 30 + ring * 22; // start 30px out, each ring 22px further
-      const jitterX = (Math.random() - 0.5) * 14;
-      const jitterY = (Math.random() - 0.5) * 14;
-
-      const position = {
-        x: cx + Math.cos(angle) * radius + jitterX,
-        y: cy + Math.sin(angle) * radius + jitterY,
-      };
-
-      try {
-        const sprite = await this.runtime.addSprite({
-          id: agentDef.id,
-          name: agentDef.name,
-          persona: agentDef.traits?.personality || "Agent",
-          segment: agentDef.segmentId,
-          position,
-        });
-        this.spriteLookup.set(agentDef.id, sprite.id);
-      } catch (err) {
-        console.warn(`[ExperimentRunner] Failed to spawn ${agentDef.name}:`, err);
-      }
+    for (let i = 0; i < initialBatch; i++) {
+      await this._spawnAgent(this.allAgents[i], i, cx, cy);
     }
 
-    this.status = RunnerStatus.READY;
+    // Wait for sprite generation to finish (they pop in on buildings)
+    await Promise.allSettled(spritePromises);
 
+    this.status = RunnerStatus.READY;
     this._emitProgress();
+  }
+
+  /**
+   * Spawn a single agent at a position offset from the fountain center.
+   * @param {object} agentDef
+   * @param {number} index — used for ring/slot positioning
+   * @param {number} cx — center x
+   * @param {number} cy — center y
+   */
+  async _spawnAgent(agentDef, index, cx = 656, cy = 400) {
+    const ring = Math.floor(index / 8);
+    const slot = index % 8;
+    const angle = (slot / 8) * 2 * Math.PI + ring * 0.4;
+    const radius = 30 + ring * 22;
+    const jitterX = (Math.random() - 0.5) * 14;
+    const jitterY = (Math.random() - 0.5) * 14;
+
+    const position = {
+      x: cx + Math.cos(angle) * radius + jitterX,
+      y: cy + Math.sin(angle) * radius + jitterY,
+    };
+
+    try {
+      const sprite = await this.runtime.addSprite({
+        id: agentDef.id,
+        name: agentDef.name,
+        persona: agentDef.traits?.personality || "Agent",
+        segment: agentDef.segmentId,
+        position,
+      });
+      this.spriteLookup.set(agentDef.id, sprite.id);
+    } catch (err) {
+      console.warn(
+        `[ExperimentRunner] Failed to spawn ${agentDef.name}:`,
+        err,
+      );
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -286,14 +331,19 @@ export class ExperimentRunner {
 
   /**
    * Process a single agent through the full cycle:
-   * think → LLM decision → say → moveTo → pick → exit
-   * (agents are already spawned during init)
+   * spawn (if needed) → think → LLM decision → say → moveTo → pick → exit
    */
   async _processAgent(agentDef) {
     const startedAt = Date.now();
 
-    // Look up the pre-spawned sprite
-    const spriteId = this.spriteLookup.get(agentDef.id) || agentDef.id;
+    // Spawn the agent if it wasn't pre-spawned during init
+    let spriteId = this.spriteLookup.get(agentDef.id);
+    if (!spriteId) {
+      // Use a simple index for positioning (they'll appear near center)
+      const idx = this._completedCount % 8;
+      await this._spawnAgent(agentDef, idx);
+      spriteId = this.spriteLookup.get(agentDef.id) || agentDef.id;
+    }
 
     this.onAgentUpdate({
       type: "agent.processing",
@@ -370,14 +420,11 @@ export class ExperimentRunner {
     // 5. Move to chosen building
     await this.runtime.moveTo(spriteId, chosenOptionId);
 
-    // 6. Pick item if visual exists
-    const option = this.runtime.optionsMap.get(chosenOptionId);
-    if (option?.visual?.spriteSheetDataUrl) {
-      try {
-        await this.runtime.pick(spriteId, chosenOptionId);
-      } catch {
-        // pick can fail if range is slightly off — not critical
-      }
+    // 6. Pick from chosen building
+    try {
+      await this.runtime.pick(spriteId, chosenOptionId);
+    } catch {
+      // pick can fail if range is slightly off — not critical
     }
 
     // 7. Exit the world

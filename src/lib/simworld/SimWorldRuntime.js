@@ -173,6 +173,48 @@ export class SimWorldRuntime {
     return Array.from(this.optionsMap.values());
   }
 
+  /**
+   * Attach or update the visual (product sprite) on an existing option/building.
+   * Call this after the option has been added to overlay a generated sprite.
+   *
+   * @param {string} optionId — option ID returned from addOption
+   * @param {{ spriteSheetDataUrl: string, grid?: number[], frameSize?: number, frameDurationMs?: number }} visual
+   */
+  updateOptionVisual(optionId, visual) {
+    const option = this.optionsMap.get(optionId);
+    if (!option || !visual?.spriteSheetDataUrl) return;
+
+    const normalizedVisual = {
+      spriteSheetDataUrl: visual.spriteSheetDataUrl,
+      gifDataUrl: visual.gifDataUrl || null,
+      grid: Array.isArray(visual.grid)
+        ? [
+            Number.parseInt(visual.grid[0], 10) || 2,
+            Number.parseInt(visual.grid[1], 10) || 2,
+          ]
+        : [2, 2],
+      frameSize: Number.parseInt(visual.frameSize, 10) || 128,
+      frameDurationMs: Number.parseInt(visual.frameDurationMs, 10) || 150,
+    };
+
+    // Update in optionsMap
+    option.visual = normalizedVisual;
+
+    // Update in engine station and trigger overlay attachment
+    const entry = this.engine.stations.get(optionId);
+    if (entry) {
+      entry.station.visual = normalizedVisual;
+      this.engine._attachStationOverlay(optionId).catch((err) => {
+        console.warn(`Failed to attach overlay for ${optionId}:`, err);
+      });
+    }
+
+    this._emitAction(null, "option.visual_updated", {
+      optionId,
+      label: option.label,
+    });
+  }
+
   // ----------------------------------------------------------------
   // Sprite management
   // ----------------------------------------------------------------
@@ -283,12 +325,6 @@ export class SimWorldRuntime {
       throw new Error(`Option "${optionId}" not found.`);
     }
 
-    if (!option.visual?.spriteSheetDataUrl) {
-      throw new Error(
-        `Option "${option.label || optionId}" has no product sprite.`,
-      );
-    }
-
     const character = this.store.getState().characters[spriteId];
     if (!character) {
       throw new Error(`Sprite "${spriteId}" not found.`);
@@ -306,7 +342,13 @@ export class SimWorldRuntime {
     }
 
     const previousOptionId = character.pickedOptionId || null;
-    await this.engine.setCharacterPickup(spriteId, option.visual, { optionId });
+
+    // Only show visual pickup if the option has a product sprite
+    if (option.visual?.spriteSheetDataUrl) {
+      await this.engine.setCharacterPickup(spriteId, option.visual, {
+        optionId,
+      });
+    }
 
     const updated = {
       ...character,

@@ -138,8 +138,8 @@ export default function RunnerPage() {
       runtime.onAction((event) => {
         setActionLog((prev) => [...prev, event]);
 
+        // Refresh sprites list on meaningful changes
         if (
-          event.type === "sprite.added" ||
           event.type === "sprite.removed" ||
           event.type === "pick" ||
           event.type === "exit"

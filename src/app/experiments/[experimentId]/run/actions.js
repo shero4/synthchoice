@@ -1,6 +1,14 @@
 "use server";
 
-import { invoke_llm, Models, MODEL_TO_PROVIDER } from "@/lib/llm";
+import {
+  invoke_llm,
+  Models,
+  MODEL_TO_PROVIDER,
+  searchProductForSprite,
+  fetchImageFromUrls,
+} from "@/lib/llm";
+import { postprocessSpriteSheet } from "@/lib/sprites/process";
+import { SPRITE_PROMPT } from "@/lib/sprites/prompt";
 
 // ---------------------------------------------------------------------------
 // Model tag resolution
@@ -305,5 +313,77 @@ export async function getAgentDecision({ agent, alternatives, experiment, modelT
       confidence: 0,
       reasonCodes: [],
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sprite generation for alternatives
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a product sprite for an alternative.
+ * Pipeline: web search → image fetch → LLM sprite generation → post-process.
+ *
+ * @param {string} productName — alternative name (e.g. "MacBook Pro 14")
+ * @returns {{ success: boolean, spriteSheetDataUrl?: string, grid?: number[], frameSize?: number, frameDurationMs?: number, error?: string }}
+ */
+export async function generateAlternativeSprite(productName) {
+  if (!productName) return { error: "No product name" };
+
+  try {
+    // 1. Search for a product image
+    const searchResult = await searchProductForSprite(productName.trim(), {
+      maxSearches: 3,
+    });
+
+    const urls = [
+      searchResult.imageUrl,
+      ...(searchResult.imageUrls || []),
+    ].filter(Boolean);
+
+    if (!urls.length) {
+      return { error: `No images found for "${productName}"` };
+    }
+
+    // 2. Fetch the best available image
+    const imageDataUrl = await fetchImageFromUrls(urls);
+
+    // 3. Generate sprite sheet via LLM (image → pixel-art sprite)
+    const model = Models.GEMINI_2_5_FLASH_IMAGE;
+    const messages = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: SPRITE_PROMPT },
+          { type: "image_url", image_url: { url: imageDataUrl } },
+        ],
+      },
+    ];
+
+    const result = await invoke_llm(model, messages, { maxRetries: 2 });
+    if (!result.images?.length) {
+      return { error: "LLM returned no images" };
+    }
+
+    // 4. Post-process to a clean sprite sheet
+    const spriteSheetDataUrl = await postprocessSpriteSheet(result.images[0], {
+      grid: [2, 2],
+      targetFrame: [128, 128],
+      maxColors: 256,
+    });
+
+    return {
+      success: true,
+      spriteSheetDataUrl,
+      grid: [2, 2],
+      frameSize: 128,
+      frameDurationMs: 150,
+    };
+  } catch (err) {
+    console.warn(
+      `[generateAlternativeSprite] Failed for "${productName}":`,
+      err.message,
+    );
+    return { error: err.message || "Sprite generation failed" };
   }
 }
