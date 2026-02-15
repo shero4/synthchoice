@@ -1,0 +1,29 @@
+---
+description: Package manager and dev workflow - use pnpm, never build or run dev servers
+alwaysApply: true
+---
+
+# Dev Workflow
+
+## Package Manager
+
+- **Always use pnpm** for installs and all package operations
+- Use `pnpm install`, `pnpm add`, `pnpm remove`, etc. — never npm or yarn
+
+```bash
+# ✅ GOOD
+pnpm install
+pnpm add some-package
+pnpm add -D dev-dependency
+
+# ❌ BAD
+npm install
+yarn add some-package
+```
+
+## Build & Dev Servers
+
+- **Never run build commands** — the user will build when ready
+- **Never run dev servers** — the user will start them
+
+Do not suggest or execute `pnpm build`, `pnpm dev`, `next dev`, `npm run start`, or similar. The user handles builds and dev servers themselves.

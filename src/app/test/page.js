@@ -25,6 +25,7 @@ import {
   PauseCircleOutlined,
   DownloadOutlined,
 } from "@ant-design/icons";
+import { generateSprite } from "./actions";
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -161,7 +162,7 @@ export default function TestPage() {
     }
   };
 
-  // Handle sprite generation
+  // Handle sprite generation (uses invoke_llm via server action)
   const handleGenerate = async () => {
     if (!logoFile) {
       message.error("Please upload a logo image first");
@@ -179,15 +180,10 @@ export default function TestPage() {
       formData.append("frameSize", frameSize.toString());
       formData.append("generateGif", generateGif.toString());
 
-      const response = await fetch("/api/sprites/generate", {
-        method: "POST",
-        body: formData,
-      });
+      const data = await generateSprite(formData);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to generate sprite");
+      if (data.error) {
+        throw new Error(data.error);
       }
 
       setRawImage(data.rawImage);
