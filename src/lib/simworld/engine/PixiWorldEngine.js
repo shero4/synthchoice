@@ -518,7 +518,7 @@ export class PixiWorldEngine {
   // -----------------------------------------------------------------------
 
   destroy() {
-    if (this.app) {
+    if (this.app?.ticker) {
       this.app.ticker.remove(this.tick);
     }
 

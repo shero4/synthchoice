@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { Progress, Typography } from "antd";
+import { PlayCircleOutlined } from "@ant-design/icons";
 import SimWorldCanvas from "@/components/simworld/SimWorldCanvas";
 import SimWorldSidebar from "@/components/simworld/SimWorldSidebar";
 import TestToolbar from "@/components/simworld/TestToolbar";
+
+const { Text, Title } = Typography;
 
 /**
  * SimWorld Runner Page
@@ -16,6 +20,8 @@ import TestToolbar from "@/components/simworld/TestToolbar";
 export default function RunnerPage() {
   const runtimeRef = useRef(null);
   const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [sprites, setSprites] = useState([]);
   const [options, setOptions] = useState([]);
   const [actionLog, setActionLog] = useState([]);
@@ -43,6 +49,12 @@ export default function RunnerPage() {
     });
 
     setReady(true);
+    setLoading(false);
+    setLoadingProgress(100);
+  }, []);
+
+  const handleProgress = useCallback((progress) => {
+    setLoadingProgress(progress);
   }, []);
 
   /** Called by toolbar after any mutation to sync React state */
@@ -72,10 +84,51 @@ export default function RunnerPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: 12,
+          padding: 16,
         }}
       >
-        <SimWorldCanvas onReady={handleReady} />
+        {/* Loading overlay */}
+        {loading && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255, 255, 255, 0.95)",
+              zIndex: 10,
+              gap: 16,
+            }}
+          >
+            <PlayCircleOutlined
+              style={{ fontSize: 48, color: "#1890ff", opacity: 0.8 }}
+            />
+            <Title level={4} style={{ margin: 0, color: "#374151" }}>
+              Initializing SimWorld
+            </Title>
+            <div style={{ width: 280 }}>
+              <Progress
+                percent={loadingProgress}
+                status="active"
+                strokeColor={{
+                  "0%": "#1890ff",
+                  "100%": "#52c41a",
+                }}
+                size="small"
+              />
+            </div>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              Loading assets and preparing the simulation...
+            </Text>
+          </div>
+        )}
+
+        <SimWorldCanvas onReady={handleReady} onProgress={handleProgress} />
       </div>
 
       {/* Sidebar */}
