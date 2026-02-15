@@ -20,7 +20,7 @@
 
 ### Video walkthrough
 
-<video src="public/readme/synthchoice.mp4" controls width="100%"></video>
+<video src="public/readme/demo.mp4" controls width="100%"></video>
 
 ### Screenshots
 
