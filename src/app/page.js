@@ -155,7 +155,7 @@ export default function HomePage() {
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {experiment.agentPlan?.totalAgents || 0} agents •{" "}
                         {experiment.featureSchema?.features?.length || 0}{" "}
-                        features • {experiment.choiceFormat || "AB"} format
+                        features
                       </Text>
                     </Space>
                   }

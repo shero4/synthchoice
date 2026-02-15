@@ -12,21 +12,27 @@ export const Provider = Object.freeze({
 
 /** @type {Record<string, string>} Model ID -> Provider */
 export const MODEL_TO_PROVIDER = Object.freeze({
-  [Models.GEMINI_2_FLASH_IMAGE]: Provider.GEMINI,
+  // Gemini (direct Google API)
   [Models.GEMINI_2_FLASH]: Provider.GEMINI,
+  [Models.GEMINI_2_5_FLASH]: Provider.GEMINI,
+  [Models.GEMINI_3]: Provider.GEMINI,
 
-  [Models.GEMINI_2_5_FLASH_IMAGE_PREVIEW]: Provider.OPENROUTER,
+  // OpenRouter
+  [Models.GEMINI_2_5_FLASH_OPENROUTER]: Provider.OPENROUTER,
   [Models.GEMINI_2_FLASH_OPENROUTER]: Provider.OPENROUTER,
-  [Models.CLAUDE_3_5_SONNET]: Provider.OPENROUTER,
-  [Models.CLAUDE_3_OPUS]: Provider.OPENROUTER,
-  [Models.GPT_4O]: Provider.OPENROUTER,
-  [Models.GPT_4O_MINI]: Provider.OPENROUTER,
+  [Models.CLAUDE_SONNET_4_5]: Provider.OPENROUTER,
+  [Models.CLAUDE_OPUS_4_6]: Provider.OPENROUTER,
+  [Models.CLAUDE_HAIKU_4_5]: Provider.OPENROUTER,
+  [Models.GPT_5_2]: Provider.OPENROUTER,
+  [Models.GPT_5_3_CODEX]: Provider.OPENROUTER,
 
-  [Models.GPT_4_1_MINI]: Provider.OPENAI,
-  [Models.GPT_4O_OPENAI]: Provider.OPENAI,
+  // OpenAI (direct API)
+  [Models.GPT_5_2_OPENAI]: Provider.OPENAI,
 
-  [Models.CLAUDE_3_5_SONNET_ANTHROPIC]: Provider.ANTHROPIC,
-  [Models.CLAUDE_3_OPUS_ANTHROPIC]: Provider.ANTHROPIC,
+  // Anthropic (direct API)
+  [Models.CLAUDE_SONNET_4_5_ANTHROPIC]: Provider.ANTHROPIC,
+  [Models.CLAUDE_OPUS_4_6_ANTHROPIC]: Provider.ANTHROPIC,
+  [Models.CLAUDE_HAIKU_4_5_ANTHROPIC]: Provider.ANTHROPIC,
 });
 
 const PROVIDER_ENV_KEYS = Object.freeze({

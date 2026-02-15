@@ -77,7 +77,7 @@ Example (JSON):
         <Alert
           type="info"
           showIcon
-          message="Paste your alternatives data"
+          title="Paste your alternatives data"
           description={
             <Text type="secondary">
               Paste alternatives in any format (markdown, JSON, plain text). 
@@ -90,7 +90,7 @@ Example (JSON):
           <Alert
             type="warning"
             showIcon
-            message="Define features first"
+            title="Define features first"
             description="You need to define a feature schema before parsing alternatives."
           />
         )}
@@ -107,7 +107,7 @@ Example (JSON):
         {parseError && (
           <Alert 
             type="error" 
-            message={parseError} 
+            title={parseError} 
             showIcon 
             closable 
             onClose={() => setParseError(null)} 

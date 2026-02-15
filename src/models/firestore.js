@@ -71,16 +71,28 @@
  * @property {AgentSegment[]} segments - Array of segment definitions
  */
 
-// ============================================================================
-// TASK PLAN
-// ============================================================================
+/**
+ * @typedef {Object} CustomPersonality
+ * @property {string} id - Unique identifier
+ * @property {string} label - Display label
+ * @property {string} [description] - Optional description
+ * @property {AgentTraits} traits - Trait values
+ */
 
 /**
- * @typedef {Object} TaskPlan
- * @property {number} tasksPerAgent - Number of tasks each agent will complete
- * @property {boolean} randomizeOrder - Whether to randomize alternative order
- * @property {number} includeHoldouts - Number of holdout tasks for validation
- * @property {number} includeRepeats - Number of repeat tasks for consistency check
+ * @typedef {Object} CustomLocation
+ * @property {string} id - Unique identifier
+ * @property {string} label - Display label
+ */
+
+/**
+ * @typedef {Object} AgentConfig
+ * @property {string[]} selectedModels - Selected model preset IDs
+ * @property {string[]} selectedPersonalities - Selected personality preset IDs
+ * @property {string[]} selectedLocations - Selected location preset IDs
+ * @property {number} agentsPerCombo - Number of agents per combination
+ * @property {CustomPersonality[]} customPersonalities - User-defined personalities
+ * @property {CustomLocation[]} customLocations - User-defined locations
  */
 
 // ============================================================================
@@ -92,21 +104,16 @@
  */
 
 /**
- * @typedef {'AB' | 'ABC' | 'AB_NONE' | 'ABC_NONE'} ChoiceFormat
- */
-
-/**
  * @typedef {Object} Experiment
  * @property {string} id - Firestore document ID
  * @property {string} name - Experiment name
  * @property {string} description - Experiment description
  * @property {string} ownerUid - Owner's Firebase UID
  * @property {ExperimentStatus} status - Current status
- * @property {ChoiceFormat} choiceFormat - Choice task format
  * @property {FeatureSchema} featureSchema - Feature definitions
  * @property {NormalizationConfig} normalization - Normalization settings
- * @property {AgentPlan} agentPlan - Agent configuration
- * @property {TaskPlan} taskPlan - Task generation settings
+ * @property {AgentPlan} agentPlan - Agent configuration (generated from agentConfig)
+ * @property {AgentConfig} [agentConfig] - Simplified agent configuration
  * @property {Date} createdAt - Creation timestamp
  * @property {Date} updatedAt - Last update timestamp
  */
@@ -172,9 +179,7 @@
 /**
  * @typedef {Object} RunConfigSnapshot
  * @property {number} featureSchemaVersion - Schema version at time of run
- * @property {ChoiceFormat} choiceFormat - Choice format used
  * @property {AgentPlan} agentPlan - Agent plan snapshot
- * @property {TaskPlan} taskPlan - Task plan snapshot
  */
 
 /**
@@ -250,12 +255,6 @@
  */
 
 /**
- * @typedef {Object} ValidationMetrics
- * @property {number} holdoutAccuracy - Accuracy on holdout tasks (0..1)
- * @property {number} repeatConsistency - Consistency on repeat tasks (0..1)
- */
-
-/**
  * @typedef {Object} ResultsSummary
  * @property {Date} computedAt - When results were computed
  * @property {Object} shares - Choice shares
@@ -264,7 +263,6 @@
  * @property {Object} featureImportance - Feature importance
  * @property {ImportanceMap} featureImportance.overall - Overall importance
  * @property {SegmentImportanceMap} featureImportance.bySegment - Importance by segment
- * @property {ValidationMetrics} validation - Validation metrics
  */
 
 // ============================================================================
@@ -282,7 +280,6 @@ export function createDefaultExperiment(ownerUid) {
     description: "",
     ownerUid,
     status: "draft",
-    choiceFormat: "AB",
     featureSchema: {
       version: 1,
       features: [],
@@ -296,11 +293,13 @@ export function createDefaultExperiment(ownerUid) {
       totalAgents: 0,
       segments: [],
     },
-    taskPlan: {
-      tasksPerAgent: 10,
-      randomizeOrder: true,
-      includeHoldouts: 2,
-      includeRepeats: 2,
+    agentConfig: {
+      selectedModels: [],
+      selectedPersonalities: [],
+      selectedLocations: [],
+      agentsPerCombo: 1,
+      customPersonalities: [],
+      customLocations: [],
     },
   };
 }
@@ -337,6 +336,21 @@ export function createDefaultSegment() {
       consistency: 0.7,
     },
     modelTag: "stub",
+  };
+}
+
+/**
+ * Create a default agent config
+ * @returns {AgentConfig}
+ */
+export function createDefaultAgentConfig() {
+  return {
+    selectedModels: [],
+    selectedPersonalities: [],
+    selectedLocations: [],
+    agentsPerCombo: 1,
+    customPersonalities: [],
+    customLocations: [],
   };
 }
 

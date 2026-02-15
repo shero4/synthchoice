@@ -28,11 +28,9 @@ export function validateExperimentReadyToRun(experiment, alternatives) {
     errors.push("Experiment must have at least 2 alternatives");
   }
 
-  // Check for minimum alternatives based on choice format
-  const choiceFormat = experiment.choiceFormat || "AB";
-  const minAlts = choiceFormat.startsWith("ABC") ? 3 : 2;
-  if (alternatives && alternatives.length < minAlts) {
-    errors.push(`Choice format ${choiceFormat} requires at least ${minAlts} alternatives`);
+  // Check for minimum alternatives (A/B format requires at least 2)
+  if (alternatives && alternatives.length < 2) {
+    errors.push("Experiment requires at least 2 alternatives");
   }
 
   // Check agent plan
@@ -52,14 +50,6 @@ export function validateExperimentReadyToRun(experiment, alternatives) {
   // Warnings
   if (totalAgents < 10) {
     warnings.push("Small sample size may lead to unreliable results");
-  }
-
-  if (experiment.taskPlan?.includeHoldouts === 0) {
-    warnings.push("No holdout tasks - cannot measure predictive accuracy");
-  }
-
-  if (experiment.taskPlan?.includeRepeats === 0) {
-    warnings.push("No repeat tasks - cannot measure consistency");
   }
 
   // Check that alternatives have all features

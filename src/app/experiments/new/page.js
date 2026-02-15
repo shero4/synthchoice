@@ -24,17 +24,19 @@ import {
   FeatureSchemaBuilder,
   AlternativesInput,
   AlternativesTable,
-  AgentSegmentsBuilder,
-  TaskPlanPanel,
+  AgentConfigBuilder,
 } from "@/components/experiment";
+import {
+  generateSegmentsFromConfig,
+  calculateTotalAgents,
+} from "@/lib/agents/presets";
 import { ensureAuth } from "@/lib/firebase/auth";
 import { createExperiment, addAlternative } from "@/lib/firebase/db";
 import {
   initDraft,
   updateDraft,
   updateDraftFeatureSchema,
-  updateDraftAgentPlan,
-  updateDraftTaskPlan,
+  updateDraftAgentConfig,
   setCurrentStep,
   nextStep,
   prevStep,
@@ -89,41 +91,56 @@ export default function NewExperimentPage() {
     { title: "Basics", content: "Name & description" },
     { title: "Features", content: "Define schema" },
     { title: "Alternatives", content: "Add options" },
-    { title: "Agents", content: "Configure segments" },
-    { title: "Task Plan", content: "Set parameters" },
+    { title: "Agents", content: "Configure agents" },
     { title: "Review", content: "Save experiment" },
   ];
 
   // Handle save experiment
   const handleSave = async () => {
-    if (!draft) return;
+    if (!draft) {
+      console.error("handleSave: No draft available");
+      message.error("No draft to save");
+      return;
+    }
 
+    console.log("handleSave: Starting save...", { draft, alternatives });
     setSaving(true);
+    
     try {
+      // Generate segments from agentConfig
+      const agentConfig = draft.agentConfig || {};
+      console.log("handleSave: Generating segments from config:", agentConfig);
+      const segments = generateSegmentsFromConfig(agentConfig);
+      const totalAgents = calculateTotalAgents(agentConfig);
+      console.log("handleSave: Generated", totalAgents, "agents across", segments.length, "segments");
+
       // Create experiment
+      console.log("handleSave: Creating experiment in Firestore...");
       const experimentId = await createExperiment({
         ...draft,
         status: "draft",
         agentPlan: {
-          ...draft.agentPlan,
-          totalAgents: draft.agentPlan.segments.reduce(
-            (sum, s) => sum + (s.count || 0),
-            0
-          ),
+          segments,
+          totalAgents,
         },
+        agentConfig, // Also save the config for future editing
       });
+      console.log("handleSave: Experiment created with ID:", experimentId);
 
       // Add alternatives
+      console.log("handleSave: Adding", alternatives.length, "alternatives...");
       for (const alt of alternatives) {
         await addAlternative(experimentId, alt);
       }
+      console.log("handleSave: All alternatives added");
 
       message.success("Experiment created successfully!");
       dispatch(clearDraft());
       router.push(`/experiments/${experimentId}`);
     } catch (error) {
-      console.error("Error saving experiment:", error);
-      message.error("Failed to save experiment");
+      console.error("handleSave: Error saving experiment:", error);
+      console.error("handleSave: Error stack:", error.stack);
+      message.error(`Failed to save experiment: ${error.message || "Unknown error"}`);
     } finally {
       setSaving(false);
     }
@@ -211,7 +228,7 @@ export default function NewExperimentPage() {
 
       case 2: // Alternatives
         return (
-          <Space orientation="vertical" size="large" style={{ width: "100%" }}>
+          <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <AlternativesInput
               value={rawInput}
               onChange={setRawInput}
@@ -231,60 +248,44 @@ export default function NewExperimentPage() {
 
       case 3: // Agents
         return (
-          <AgentSegmentsBuilder
-            segments={draft.agentPlan?.segments || []}
-            onChange={(segments) =>
-              dispatch(
-                updateDraftAgentPlan({
-                  ...draft.agentPlan,
-                  segments,
-                  totalAgents: segments.reduce((sum, s) => sum + (s.count || 0), 0),
-                })
-              )
+          <AgentConfigBuilder
+            config={draft.agentConfig || {}}
+            onChange={(agentConfig) =>
+              dispatch(updateDraftAgentConfig(agentConfig))
             }
           />
         );
 
-      case 4: // Task Plan
-        return (
-          <TaskPlanPanel
-            taskPlan={draft.taskPlan}
-            choiceFormat={draft.choiceFormat}
-            totalAgents={draft.agentPlan?.totalAgents || 0}
-            onChange={(taskPlan) => dispatch(updateDraftTaskPlan(taskPlan))}
-            onChoiceFormatChange={(format) =>
-              dispatch(updateDraft({ choiceFormat: format }))
-            }
-          />
-        );
+      case 4: // Review
+        const reviewAgentConfig = draft.agentConfig || {};
+        const reviewTotalAgents = calculateTotalAgents(reviewAgentConfig);
+        const reviewNumCombinations =
+          (reviewAgentConfig.selectedModels?.length || 0) *
+          (reviewAgentConfig.selectedPersonalities?.length || 0) *
+          (reviewAgentConfig.selectedLocations?.length || 0);
 
-      case 5: // Review
         return (
           <Card title="Review & Save">
             <Result
               icon={<CheckCircleOutlined />}
               title="Ready to create experiment"
               subTitle={
-                <Space orientation="vertical">
-                <span>
-                  <strong>Name:</strong> {draft.name || "Untitled"}
-                </span>
-                <span>
-                  <strong>Features:</strong>{" "}
-                  {draft.featureSchema?.features?.length || 0}
-                </span>
-                <span>
-                  <strong>Alternatives:</strong> {alternatives.length}
-                </span>
-                <span>
-                  <strong>Agents:</strong> {draft.agentPlan?.totalAgents || 0} across{" "}
-                  {draft.agentPlan?.segments?.length || 0} segments
-                </span>
-                <span>
-                  <strong>Tasks per agent:</strong>{" "}
-                  {draft.taskPlan?.tasksPerAgent || 10}
-                </span>
-              </Space>
+                <Space direction="vertical">
+                  <span>
+                    <strong>Name:</strong> {draft.name || "Untitled"}
+                  </span>
+                  <span>
+                    <strong>Features:</strong>{" "}
+                    {draft.featureSchema?.features?.length || 0}
+                  </span>
+                  <span>
+                    <strong>Alternatives:</strong> {alternatives.length}
+                  </span>
+                  <span>
+                    <strong>Agents:</strong> {reviewTotalAgents} across{" "}
+                    {reviewNumCombinations} segments ({reviewAgentConfig.selectedModels?.length || 0} models × {reviewAgentConfig.selectedPersonalities?.length || 0} personalities × {reviewAgentConfig.selectedLocations?.length || 0} locations)
+                  </span>
+                </Space>
               }
               extra={
                 <Button

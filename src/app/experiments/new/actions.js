@@ -97,7 +97,7 @@ export async function parseFeatureSchema(rawInput) {
       { role: "user", content: rawInput },
     ];
 
-    const result = await invoke_llm(Models.GPT_4O_MINI, messages, {
+    const result = await invoke_llm(Models.GEMINI_2_5_FLASH, messages, {
       jsonMode: true,
       maxRetries: 2,
     });
@@ -186,7 +186,7 @@ ${rawInput}`;
       { role: "user", content: userMessage },
     ];
 
-    const result = await invoke_llm(Models.GPT_4O_MINI, messages, {
+    const result = await invoke_llm(Models.GEMINI_2_5_FLASH, messages, {
       jsonMode: true,
       maxRetries: 2,
     });

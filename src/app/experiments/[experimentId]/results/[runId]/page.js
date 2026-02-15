@@ -25,14 +25,12 @@ import {
   SharesPanel,
   SegmentBreakdown,
   FeatureImportancePanel,
-  ValidationPanel,
 } from "@/components/results";
 import {
   getExperiment,
   getAlternatives,
   getRun,
   getResponses,
-  getTasks,
   getResultsSummary,
   saveResultsSummary,
 } from "@/lib/firebase/db";
@@ -89,18 +87,13 @@ export default function ResultsPage() {
   const computeAndSaveResults = async (exp, alts, runData) => {
     setComputing(true);
     try {
-      const [responses, tasks] = await Promise.all([
-        getResponses(experimentId, runId),
-        getTasks(experimentId, runId),
-      ]);
+      const responses = await getResponses(experimentId, runId);
 
       const computed = computeResults({
         responses,
-        tasks,
         alternatives: alts,
         features: exp.featureSchema?.features || [],
         segments: exp.agentPlan?.segments || [],
-        taskPlan: exp.taskPlan,
       });
 
       setResults(computed);
@@ -185,7 +178,8 @@ export default function ResultsPage() {
           <Descriptions.Item label="Run ID">{runId}</Descriptions.Item>
           <Descriptions.Item label="Status">{run.status}</Descriptions.Item>
           <Descriptions.Item label="Tasks Completed">
-            {run.progress?.completedTasks || 0} / {run.progress?.totalTasks || 0}
+            {run.progress?.completedTasks || 0} /{" "}
+            {run.progress?.totalTasks || 0}
           </Descriptions.Item>
           <Descriptions.Item label="Computed">
             {results?.computedAt
@@ -232,30 +226,17 @@ export default function ResultsPage() {
             </Col>
             <Col span={6}>
               <Card>
-                <Statistic
-                  title="Alternatives"
-                  value={alternatives.length}
-                />
+                <Statistic title="Alternatives" value={alternatives.length} />
               </Card>
             </Col>
             <Col span={6}>
               <Card>
-                <Statistic
-                  title="Segments"
-                  value={segments.length}
-                />
+                <Statistic title="Segments" value={segments.length} />
               </Card>
             </Col>
             <Col span={6}>
               <Card>
-                <Statistic
-                  title="Validation Score"
-                  value={`${Math.round(
-                    ((results.validation?.holdoutAccuracy || 0) +
-                      (results.validation?.repeatConsistency || 0)) *
-                      50
-                  )}%`}
-                />
+                <Statistic title="Features" value={features.length} />
               </Card>
             </Col>
           </Row>
@@ -286,13 +267,6 @@ export default function ResultsPage() {
               features={features}
             />
           </div>
-
-          {/* Validation */}
-          <ValidationPanel
-            validation={results.validation}
-            holdoutCount={experiment.taskPlan?.includeHoldouts || 0}
-            repeatCount={experiment.taskPlan?.includeRepeats || 0}
-          />
         </>
       )}
     </div>

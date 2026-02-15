@@ -92,10 +92,10 @@ const experimentSlice = createSlice({
         state.draft.agentPlan = action.payload;
       }
     },
-    // Update task plan in draft
-    updateDraftTaskPlan: (state, action) => {
+    // Update agent config in draft (simplified config)
+    updateDraftAgentConfig: (state, action) => {
       if (state.draft) {
-        state.draft.taskPlan = action.payload;
+        state.draft.agentConfig = action.payload;
       }
     },
     // Set current step
@@ -134,7 +134,7 @@ export const {
   updateDraft,
   updateDraftFeatureSchema,
   updateDraftAgentPlan,
-  updateDraftTaskPlan,
+  updateDraftAgentConfig,
   setCurrentStep,
   nextStep,
   prevStep,

@@ -130,78 +130,28 @@ function computeFeatureImportance(responses, features, segments) {
   return { overall: overallImportance, bySegment };
 }
 
-/**
- * Compute validation metrics
- * @param {Object[]} responses - Response objects
- * @param {Object[]} tasks - Task objects
- * @returns {{ holdoutAccuracy: number, repeatConsistency: number }}
- */
-function computeValidation(responses, tasks) {
-  // Build response lookup
-  const responseByTask = {};
-  responses.forEach((r) => {
-    responseByTask[r.taskId] = r;
-  });
-
-  // Compute holdout accuracy
-  // For stub simulator, we compare holdout choices to predicted choices
-  // In a real scenario, this would compare to actual human choices
-  const holdoutTasks = tasks.filter((t) => t.isHoldout);
-  const holdoutAccuracy = holdoutTasks.length > 0 ? 0.75 : 0; // Placeholder
-
-  // Compute repeat consistency
-  const repeatTasks = tasks.filter((t) => t.isRepeatOf);
-  let consistentCount = 0;
-  let totalRepeats = 0;
-
-  repeatTasks.forEach((repeatTask) => {
-    const originalTaskId = repeatTask.isRepeatOf;
-    const repeatResponse = responseByTask[repeatTask.id];
-    const originalResponse = responseByTask[originalTaskId];
-
-    if (repeatResponse && originalResponse) {
-      totalRepeats++;
-      if (repeatResponse.chosen === originalResponse.chosen) {
-        consistentCount++;
-      }
-    }
-  });
-
-  const repeatConsistency = totalRepeats > 0 ? consistentCount / totalRepeats : 0.8; // Default
-
-  return {
-    holdoutAccuracy: Math.round(holdoutAccuracy * 100) / 100,
-    repeatConsistency: Math.round(repeatConsistency * 100) / 100,
-  };
-}
 
 /**
  * Compute all results from responses
  * @param {Object} params
  * @param {Object[]} params.responses - Response objects
- * @param {Object[]} params.tasks - Task objects
  * @param {Object[]} params.alternatives - Alternative objects
  * @param {import('@/models/firestore').Feature[]} params.features - Feature schema
  * @param {Object[]} params.segments - Segment definitions
- * @param {Object} params.taskPlan - Task plan settings
  * @returns {import('@/models/firestore').ResultsSummary}
  */
 export function computeResults({
   responses,
-  tasks,
   alternatives,
   features,
   segments,
-  taskPlan,
 }) {
   const shares = computeShares(responses, alternatives, segments);
   const featureImportance = computeFeatureImportance(responses, features, segments);
-  const validation = computeValidation(responses, tasks);
 
   return {
     shares,
     featureImportance,
-    validation,
   };
 }
 

@@ -292,20 +292,11 @@ export default function ExperimentDetailPage() {
       {/* Configuration */}
       <Card title="Configuration" style={{ marginBottom: 24 }}>
         <Descriptions column={3}>
-          <Descriptions.Item label="Choice Format">
-            {experiment.choiceFormat || "AB"}
+          <Descriptions.Item label="Total Agents">
+            {experiment.agentPlan?.totalAgents || 0}
           </Descriptions.Item>
-          <Descriptions.Item label="Tasks per Agent">
-            {experiment.taskPlan?.tasksPerAgent || 10}
-          </Descriptions.Item>
-          <Descriptions.Item label="Randomize Order">
-            {experiment.taskPlan?.randomizeOrder ? "Yes" : "No"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Holdout Tasks">
-            {experiment.taskPlan?.includeHoldouts || 0}
-          </Descriptions.Item>
-          <Descriptions.Item label="Repeat Tasks">
-            {experiment.taskPlan?.includeRepeats || 0}
+          <Descriptions.Item label="Segments">
+            {experiment.agentPlan?.segments?.length || 0}
           </Descriptions.Item>
           <Descriptions.Item label="Features">
             {experiment.featureSchema?.features?.length || 0}

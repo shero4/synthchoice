@@ -1,6 +1,9 @@
 /**
  * Task Generation Helpers
  * Generate choice tasks for experiments
+ * 
+ * Simplified: Each agent evaluates all pairwise comparisons of alternatives.
+ * For N alternatives, there are C(N,2) = N*(N-1)/2 pairs.
  */
 
 /**
@@ -18,131 +21,54 @@ function shuffle(array) {
 }
 
 /**
- * Get number of alternatives per task based on format
- * @param {string} choiceFormat
- * @returns {number}
- */
-function getAlternativesPerTask(choiceFormat) {
-  switch (choiceFormat) {
-    case "ABC":
-    case "ABC_NONE":
-      return 3;
-    case "AB":
-    case "AB_NONE":
-    default:
-      return 2;
-  }
-}
-
-/**
- * Generate all possible alternative combinations
+ * Generate all pairwise combinations of alternatives
  * @param {string[]} alternativeIds
- * @param {number} size - combination size
- * @returns {string[][]}
+ * @returns {string[][]} Array of [altA, altB] pairs
  */
-function getCombinations(alternativeIds, size) {
-  const results = [];
-
-  function combine(start, combo) {
-    if (combo.length === size) {
-      results.push([...combo]);
-      return;
-    }
-    for (let i = start; i < alternativeIds.length; i++) {
-      combo.push(alternativeIds[i]);
-      combine(i + 1, combo);
-      combo.pop();
+function getPairwiseCombinations(alternativeIds) {
+  const pairs = [];
+  for (let i = 0; i < alternativeIds.length; i++) {
+    for (let j = i + 1; j < alternativeIds.length; j++) {
+      pairs.push([alternativeIds[i], alternativeIds[j]]);
     }
   }
-
-  combine(0, []);
-  return results;
+  return pairs;
 }
 
 /**
  * Generate tasks for an experiment
+ * Each agent gets all possible pairwise comparisons (A/B format)
+ * 
  * @param {Object} params
  * @param {Object[]} params.agents - Agent objects
  * @param {Object[]} params.alternatives - Alternative objects
- * @param {string} params.choiceFormat - Choice format
- * @param {Object} params.taskPlan - Task plan settings
  * @returns {Object[]} Array of task objects
  */
-export function generateTasks({ agents, alternatives, choiceFormat, taskPlan }) {
+export function generateTasks({ agents, alternatives }) {
   const tasks = [];
   const alternativeIds = alternatives.map((a) => a.id);
-  const altsPerTask = getAlternativesPerTask(choiceFormat);
-  const tasksPerAgent = taskPlan?.tasksPerAgent || 10;
-  const randomizeOrder = taskPlan?.randomizeOrder !== false;
-  const holdoutCount = taskPlan?.includeHoldouts || 0;
-  const repeatCount = taskPlan?.includeRepeats || 0;
-
-  // Generate all possible combinations
-  const allCombinations = getCombinations(alternativeIds, altsPerTask);
+  
+  // Get all pairwise combinations
+  const allCombinations = getPairwiseCombinations(alternativeIds);
 
   if (allCombinations.length === 0) {
-    console.warn("Not enough alternatives for the choice format");
+    console.warn("Not enough alternatives - need at least 2");
     return [];
   }
 
-  // For each agent, generate their tasks
+  // For each agent, generate tasks for all pairwise comparisons
   agents.forEach((agent) => {
-    const agentTasks = [];
-    const regularTaskCount = tasksPerAgent - holdoutCount - repeatCount;
+    // Each agent evaluates all possible pairs (randomized order within each pair)
+    allCombinations.forEach((combination, index) => {
+      // Randomize which alternative appears first
+      const shownAlternatives = shuffle([...combination]);
 
-    // Generate regular tasks
-    for (let i = 0; i < regularTaskCount; i++) {
-      // Pick a random combination
-      const combination = allCombinations[i % allCombinations.length];
-      const shownAlternatives = randomizeOrder ? shuffle(combination) : [...combination];
-
-      agentTasks.push({
+      tasks.push({
+        id: `${agent.id}_task_${index}`,
         agentId: agent.id,
         shownAlternatives,
         isHoldout: false,
         isRepeatOf: null,
-      });
-    }
-
-    // Generate holdout tasks
-    for (let i = 0; i < holdoutCount; i++) {
-      const combination = allCombinations[(regularTaskCount + i) % allCombinations.length];
-      const shownAlternatives = randomizeOrder ? shuffle(combination) : [...combination];
-
-      agentTasks.push({
-        agentId: agent.id,
-        shownAlternatives,
-        isHoldout: true,
-        isRepeatOf: null,
-      });
-    }
-
-    // Generate repeat tasks (copies of earlier tasks)
-    for (let i = 0; i < repeatCount; i++) {
-      if (agentTasks.length > 0) {
-        const sourceIndex = i % Math.min(regularTaskCount, agentTasks.length);
-        const sourceTask = agentTasks[sourceIndex];
-        const shownAlternatives = randomizeOrder
-          ? shuffle([...sourceTask.shownAlternatives])
-          : [...sourceTask.shownAlternatives];
-
-        agentTasks.push({
-          agentId: agent.id,
-          shownAlternatives,
-          isHoldout: false,
-          isRepeatOf: `${agent.id}_task_${sourceIndex}`,
-        });
-      }
-    }
-
-    // Shuffle all tasks for this agent
-    const shuffledTasks = shuffle(agentTasks);
-
-    // Add task IDs and push to main array
-    shuffledTasks.forEach((task, index) => {
-      tasks.push({
-        ...task,
-        id: `${agent.id}_task_${index}`,
       });
     });
   });
@@ -156,16 +82,24 @@ export function generateTasks({ agents, alternatives, choiceFormat, taskPlan }) 
  * @returns {Object}
  */
 export function getTaskStats(tasks) {
-  const regular = tasks.filter((t) => !t.isHoldout && !t.isRepeatOf).length;
-  const holdouts = tasks.filter((t) => t.isHoldout).length;
-  const repeats = tasks.filter((t) => t.isRepeatOf).length;
   const uniqueAgents = new Set(tasks.map((t) => t.agentId)).size;
+  const tasksPerAgent = uniqueAgents > 0 ? tasks.length / uniqueAgents : 0;
 
   return {
     total: tasks.length,
-    regular,
-    holdouts,
-    repeats,
     uniqueAgents,
+    tasksPerAgent,
   };
+}
+
+/**
+ * Calculate number of tasks that will be generated
+ * @param {number} numAlternatives - Number of alternatives
+ * @param {number} numAgents - Number of agents
+ * @returns {number} Total tasks
+ */
+export function calculateTotalTasks(numAlternatives, numAgents) {
+  // C(n,2) pairs per agent
+  const pairsPerAgent = (numAlternatives * (numAlternatives - 1)) / 2;
+  return pairsPerAgent * numAgents;
 }

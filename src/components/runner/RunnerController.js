@@ -45,8 +45,8 @@ export function RunnerController({
   agents = [],
   startTime = null,
 }) {
-  // Determine if None is an option
-  const includeNone = experiment?.choiceFormat?.includes("NONE") || false;
+  // None option is not supported in simplified mode
+  const includeNone = false;
 
   // Get features for display
   const features = experiment?.featureSchema?.features || [];
@@ -166,7 +166,8 @@ export function RunnerController({
                     isActive={currentAgent?.id === agent.id}
                     isComplete={
                       status === "complete" ||
-                      (progress.completed > 0 && agents.indexOf(agent) < Math.floor(progress.completed / (experiment?.taskPlan?.tasksPerAgent || 1)))
+                      (progress.completed > 0 && agents.length > 0 && 
+                        agents.indexOf(agent) < Math.floor(progress.completed / (progress.total / agents.length)))
                     }
                     showLabel={false}
                   />

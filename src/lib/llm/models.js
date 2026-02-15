@@ -5,22 +5,24 @@
  */
 export const Models = Object.freeze({
   // Gemini (direct Google API)
-  GEMINI_2_FLASH_IMAGE: "gemini-2.0-flash-exp-image-generation",
   GEMINI_2_FLASH: "gemini-2.0-flash",
+  GEMINI_2_5_FLASH: "gemini-2.5-flash",
+  GEMINI_3: "gemini-3",
 
   // OpenRouter (routes to various backends)
-  GEMINI_2_5_FLASH_IMAGE_PREVIEW: "google/gemini-2.5-flash-image-preview",
-  GEMINI_2_FLASH_OPENROUTER: "google/gemini-2.0-flash-001",
-  CLAUDE_3_5_SONNET: "anthropic/claude-3.5-sonnet",
-  CLAUDE_3_OPUS: "anthropic/claude-3-opus-4",
-  GPT_4O: "openai/gpt-4o",
-  GPT_4O_MINI: "openai/gpt-4o-mini",
-
-  // OpenAI (direct API)
-  GPT_4_1_MINI: "gpt-4.1-mini",
-  GPT_4O_OPENAI: "gpt-4o",
+  GEMINI_2_5_FLASH_OPENROUTER: "google/gemini-2.5-flash",
+  GEMINI_2_FLASH_OPENROUTER: "google/gemini-2.0-flash",
+  CLAUDE_SONNET_4_5: "anthropic/claude-sonnet-4.5",
+  CLAUDE_OPUS_4_6: "anthropic/claude-opus-4.6",
+  CLAUDE_HAIKU_4_5: "anthropic/claude-haiku-4.5",
+  GPT_5_2: "openai/gpt-5.2",
+  GPT_5_3_CODEX: "openai/gpt-5.3-codex",
 
   // Anthropic (direct API)
-  CLAUDE_3_5_SONNET_ANTHROPIC: "claude-3-5-sonnet-20241022",
-  CLAUDE_3_OPUS_ANTHROPIC: "claude-3-opus-4-20250514",
+  CLAUDE_SONNET_4_5_ANTHROPIC: "claude-sonnet-4-5-20250929",
+  CLAUDE_OPUS_4_6_ANTHROPIC: "claude-opus-4-6",
+  CLAUDE_HAIKU_4_5_ANTHROPIC: "claude-haiku-4-5-20251001",
+
+  // OpenAI (direct API)
+  GPT_5_2_OPENAI: "gpt-5.2",
 });
