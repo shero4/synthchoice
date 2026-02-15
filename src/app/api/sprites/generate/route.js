@@ -25,46 +25,8 @@ import {
   postprocessSpriteSheet,
   createGifFromSpriteSheet,
 } from "@/lib/sprites/process";
+import { SPRITE_PROMPT } from "@/lib/sprites/prompt";
 import { invoke_llm, Models } from "@/lib/llm";
-
-// Sprite generation prompt template
-const SPRITE_PROMPT = `You are a skilled pixel artist creating game collectible sprites (like Mario coins or Pokemon items).
-
-GOAL: Create a 2x2 sprite sheet (4 frames) showing a floating/bobbing animation.
-
-Subject:
-- Use the attached logo/image as reference.
-- Create a recognizable pixel-art icon version.
-- Place the icon INSIDE a circular or elliptical colored background/border (like game collectibles).
-- The circular background should have a subtle gradient or shine to look 3D and collectible.
-
-Sprite sheet layout (MUST follow exactly):
-- Grid: 2 rows x 2 columns (4 frames total).
-- Each frame: 128x128 pixels.
-- Total sheet: 256x256 pixels.
-- NO gaps between frames. Frames touch edge-to-edge.
-
-Animation frames (creates a floating/bobbing loop):
-- Frame 1 (top-left): Base position (center)
-- Frame 2 (top-right): Moved UP ~4-6 pixels, slight squash, with some golden glittery stars on top right of the icon (to depict floating)
-- Frame 3 (bottom-left): Back to center position
-- Frame 4 (bottom-right): Moved DOWN ~4-6 pixels, slight stretch
-
-Each frame should have:
-- The circular/elliptical background container
-- A small elliptical shadow underneath that changes size with the bobbing
-- The icon centered inside the circle
-
-Style:
-- Clean pixel art, visible at 1x scale.
-- Bold dark outline around the circular container.
-- Limited palette (16-32 colors).
-- Transparent background OUTSIDE the circular container.
-
-Output:
-- Return ONLY the 256x256 sprite sheet PNG.
-- No text labels, no mockups.
-`;
 
 /** Provider string from form -> model for image generation */
 const PROVIDER_TO_MODEL = {
