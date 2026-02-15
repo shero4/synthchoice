@@ -288,7 +288,8 @@ export class ExperimentRunner {
     this._initialSpawned = 0;
     this._emitProgress();
 
-    // 1. Add each alternative as a building/option in SimWorld
+    // 1. Add each alternative as a building/option in SimWorld (spread evenly when < 8)
+    this.runtime.setOptionCount(this.alternatives.length);
     for (const alt of this.alternatives) {
       const option = this.runtime.addOption({
         id: alt.id,

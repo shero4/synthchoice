@@ -1,6 +1,7 @@
 import {
   CHARACTER_STATES,
   DEFAULT_SIM_OPTIONS,
+  getOptionSlotIndices,
   SHOP_POSITIONS,
   SHOP_TYPES,
   SIM_STATUS,
@@ -34,6 +35,11 @@ export class SimWorldRuntime {
 
     /** Next slot index to try */
     this._nextSlot = 0;
+
+    /** When set, options use evenly spaced slots (diagonal spread) for this count */
+    this._optionCount = null;
+    /** Index into _spreadSlots when _optionCount is set */
+    this._spreadSlotIndex = 0;
   }
 
   // ----------------------------------------------------------------
@@ -85,29 +91,56 @@ export class SimWorldRuntime {
   // ----------------------------------------------------------------
 
   /**
+   * Set the total number of options that will be added. When n < 8, options
+   * are placed in evenly spaced (diagonal) positions instead of consecutive.
+   * Call before addOption in a loop.
+   * @param {number} n - Total option count (1–8)
+   */
+  setOptionCount(n) {
+    this._optionCount = Math.max(0, Math.min(8, Math.floor(Number(n) || 0)));
+    this._spreadSlotIndex = 0;
+  }
+
+  /**
    * Add an option (shop building) to the world.
    * @param {object} optionConfig - { id?, label, shopType?, visual? }
    */
   addOption(optionConfig) {
     const id = optionConfig.id || createId("opt");
 
-    // Find next available slot
-    let slotIndex = -1;
-    for (let i = 0; i < SHOP_POSITIONS.length; i++) {
-      const candidate = (this._nextSlot + i) % SHOP_POSITIONS.length;
-      if (!this._slotAssignments.has(candidate)) {
-        slotIndex = candidate;
-        break;
+    let slotIndex;
+    if (
+      this._optionCount != null &&
+      this._optionCount > 0 &&
+      this._spreadSlotIndex < this._optionCount
+    ) {
+      const spreadSlots = getOptionSlotIndices(this._optionCount);
+      slotIndex = spreadSlots[this._spreadSlotIndex];
+      this._spreadSlotIndex++;
+      // If that slot is already taken (shouldn't happen with spread), fall back
+      if (this._slotAssignments.has(slotIndex)) {
+        slotIndex = -1;
       }
+    } else {
+      slotIndex = -1;
     }
 
     if (slotIndex === -1) {
-      // All 8 slots full — wrap around
-      slotIndex = this._nextSlot % SHOP_POSITIONS.length;
+      // Fallback: find next available slot (original behavior)
+      for (let i = 0; i < SHOP_POSITIONS.length; i++) {
+        const candidate = (this._nextSlot + i) % SHOP_POSITIONS.length;
+        if (!this._slotAssignments.has(candidate)) {
+          slotIndex = candidate;
+          break;
+        }
+      }
+      if (slotIndex === -1) {
+        slotIndex = this._nextSlot % SHOP_POSITIONS.length;
+      }
+      this._nextSlot = slotIndex + 1;
     }
 
     const slot = SHOP_POSITIONS[slotIndex];
-    this._nextSlot = slotIndex + 1;
     const visual = optionConfig.visual?.spriteSheetDataUrl
       ? {
           spriteSheetDataUrl: optionConfig.visual.spriteSheetDataUrl,

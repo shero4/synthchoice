@@ -107,6 +107,35 @@ export const SHOP_POSITIONS = [
   shopSlot(315, "north"), // NW  — slot 7
 ];
 
+const NUM_SLOTS = SHOP_POSITIONS.length;
+
+/**
+ * Returns evenly spaced slot indices for n options (1..NUM_SLOTS).
+ * When n < 8, options are spread diagonally around the circle instead of consecutive.
+ * @param {number} n - Number of options (1 to 8)
+ * @returns {number[]} Slot indices to use, in order
+ */
+export function getOptionSlotIndices(n) {
+  const count = Math.max(1, Math.min(NUM_SLOTS, Math.floor(Number(n) || 0)));
+  if (count >= NUM_SLOTS) {
+    return Array.from({ length: NUM_SLOTS }, (_, i) => i);
+  }
+  const seen = new Set();
+  const indices = [];
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0 : i / (count - 1);
+    const slot = Math.min(
+      Math.round(t * (NUM_SLOTS - 1)),
+      NUM_SLOTS - 1,
+    );
+    if (!seen.has(slot)) {
+      seen.add(slot);
+      indices.push(slot);
+    }
+  }
+  return indices.sort((a, b) => a - b);
+}
+
 // ---------------------------------------------------------------------------
 // House visual config — maps shop type to Serene Village house variant
 // Pixel rects in the 16x16 tileset (Serene_Village_16x16.png, 304×720)
