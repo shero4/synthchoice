@@ -20,7 +20,7 @@
 
 ### Video walkthrough
 
-[![Watch the video](public/readme/1.png)](public/readme/demo.mp4)
+[![Watch the video](public/readme/1.png)](https://firebasestorage.googleapis.com/v0/b/diffcast-a0f7f.firebasestorage.app/o/feature_demos%2Fsynthchoice.mp4?alt=media&token=fbece02e-1f25-49a5-ac80-4da69c4ccfd8)
 
 ### Screenshots
 
